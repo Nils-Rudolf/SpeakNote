@@ -15,6 +15,16 @@
   padding: 0;
 }
 
+/* Entfernt die orange Umrandung für alle Buttons */
+button:focus,
+.control-button:focus,
+.cancel-button:focus,
+.confirm-button:focus,
+.apple-close-button:focus {
+  outline: none;
+  box-shadow: none;
+}
+
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   background-color: transparent;

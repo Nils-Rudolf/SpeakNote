@@ -20,6 +20,7 @@ let analyser = null;
 let microphone = null;
 let dataArray = null;
 let bufferLength = 0;
+let audioStream = null; // Neue Variable zum Speichern des Medienstreams
 
 // Visualisierungs-Variablen
 const visualizationHistory = [];
@@ -90,6 +91,7 @@ async function setupAudioVisualization() {
     
     // Mikrofon-Stream anfordern
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    audioStream = stream; // Speichere den Stream für späteres Stoppen
     
     // Mikrofon mit Audio-Kontext verbinden
     microphone = audioContext.createMediaStreamSource(stream);
@@ -114,14 +116,28 @@ async function stopAudioAnalysis() {
   if (!audioContext) return;
   
   cancelAnimationFrame(animationFrame);
+  animationFrame = null;
   
   if (microphone) {
     microphone.disconnect();
     microphone = null;
   }
   
+  // Stoppe alle Tracks im MediaStream
+  if (audioStream) {
+    const tracks = audioStream.getTracks();
+    tracks.forEach(track => {
+      track.stop();
+    });
+    audioStream = null;
+  }
+  
   if (audioContext.state !== 'closed') {
-    await audioContext.close();
+    try {
+      await audioContext.close();
+    } catch (error) {
+      console.error('Fehler beim Schließen des Audio-Kontexts:', error);
+    }
   }
   
   audioContext = null;
