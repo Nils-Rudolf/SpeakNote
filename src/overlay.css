@@ -1,11 +1,12 @@
 :root {
-  --background-color: #f7f8f8;
+  --background-color: #f6f7f8;
   --text-color: #7b7c7c;
   --cancel-bg-color: #e3e4e5;
   --cancel-text-color: #000;
   --confirm-bg-color: #000;
   --confirm-text-color: #fff;
   --error-color: #f44336;
+  --apple-close-color: #4d4d4d;
 }
 
 * {
@@ -24,12 +25,41 @@ body {
 
 .overlay-container {
   width: 100%;
+  height: 90px; /* Feste Höhe von 90px */
   padding: 12px 15px;
   background-color: var(--background-color);
   border-radius: 20px;
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
   display: flex;
   flex-direction: column;
+  position: relative; /* Für absolute Positionierung des Apple-Button */
+}
+
+/* Apple-Style Close Button */
+.apple-close-button {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background-color: var(--apple-close-color);
+  color: var(--background-color);
+  font-size: 12px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  cursor: pointer;
+  opacity: 0.8;
+  z-index: 20;
+  -webkit-app-region: no-drag;
+  font-weight: bold;
+}
+
+.apple-close-button:hover {
+  opacity: 1;
 }
 
 .close-button {
@@ -153,8 +183,11 @@ body {
   background-color: #333;
 }
 
+/* Haken-Symbol für den Bestätigungsbutton - SVG-Version */
 .check-icon {
-  font-size: 16px;
+  display: inline-block;
+  width: 18px;
+  height: 18px;
 }
 
 .waveform-container {
@@ -208,22 +241,40 @@ body {
   color: var(--text-color);
 }
 
-.status-text {
-  margin-top: 8px;
+/* Status-Container für Status und Fehlermeldungen */
+.status-container {
+  position: relative;
+  height: 20px; /* Feste Höhe für den Status-Bereich */
+  margin-bottom: 8px; /* Abstand nach unten zur Visualisierung */
   text-align: center;
+}
+
+.status-text {
   font-size: 14px;
   color: var(--text-color);
+  line-height: 1.2;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  transition: opacity 0.2s;
 }
 
 .error-message {
   color: var(--error-color);
   font-size: 12px;
-  text-align: center;
-  margin-top: 5px;
-  min-height: 16px;
-  display: none;
+  font-weight: 500;
+  line-height: 1.2;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.2s, visibility 0.2s;
 }
 
 .error-message.visible {
-  display: block;
+  opacity: 1;
+  visibility: visible;
 }

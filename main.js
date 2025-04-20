@@ -18,6 +18,7 @@ let mainWindow;
 let overlayWindow;
 let tray = null;
 let recording = false;
+let recordingStartTime = 0; // Speichert den Zeitpunkt, wann die Aufnahme gestartet wurde
 let recordingProcess;
 let recordingFilePath;
 let isQuitting = false;
@@ -302,6 +303,7 @@ async function startRecording() {
   }
   
   recording = true;
+  recordingStartTime = Date.now(); // Aufnahmebeginn speichern für Mindestaufnahmezeit
   
   // Audio-Aufnahme mit ausgewähltem Gerät starten
   let recordCmd;
@@ -351,6 +353,10 @@ async function stopRecording() {
   
   recording = false;
   
+  // Überprüfen der Mindestaufnahmezeit (1000ms = 1 Sekunde)
+  const minRecordingTime = 1000; // 1 Sekunde als Minimalwert für die API
+  const recordingDuration = Date.now() - recordingStartTime;
+  
   // Aufnahmeprozess sicher beenden
   if (recordingProcess) {
     try {
@@ -377,6 +383,28 @@ async function stopRecording() {
   // Sicherstellen, dass das overlayWindow noch existiert
   if (overlayWindow && !overlayWindow.isDestroyed()) {
     overlayWindow.webContents.send('recording-stopped');
+    
+    // Wenn die Aufnahme zu kurz war, zeigen wir eine Fehlermeldung und brechen ab
+    if (recordingDuration < minRecordingTime) {
+      console.log(`Aufnahme zu kurz (${recordingDuration}ms). Mindestlänge: ${minRecordingTime}ms`);
+      if (overlayWindow && !overlayWindow.isDestroyed()) {
+        overlayWindow.webContents.send('transcription-error', { 
+          message: 'Aufnahme zu kurz. Bitte halte F5 länger gedrückt.'
+        });
+      }
+      
+      // Temp-Datei löschen, wenn sie existiert
+      try {
+        if (recordingFilePath && fs.existsSync(recordingFilePath)) {
+          await unlinkAsync(recordingFilePath);
+          console.log('Zu kurze Aufnahme-Datei wurde gelöscht.');
+        }
+      } catch (error) {
+        console.error('Fehler beim Löschen der temporären Datei:', error);
+      }
+      
+      return;
+    }
     
     try {
       // Transkription starten
@@ -424,33 +452,64 @@ async function cancelRecordingProcess() {
   console.log('Aufnahme wird explizit abgebrochen...');
   recording = false;
   
-  // Aufnahmeprozess forciert beenden
+  // Aufnahmeprozess schrittweise und sicherer beenden
   if (recordingProcess) {
     try {
+      // Zuerst mit SIGTERM versuchen (sanfter)
       recordingProcess.kill('SIGTERM');
       
-      // Zusätzlich SoX-Prozesse explizit beenden
-      if (process.platform === 'darwin') {
-        // Mehrere Befehle, um sicherzustellen, dass alle SoX-Prozesse beendet werden
-        exec('killall -9 sox 2>/dev/null || true', () => {});
-        exec('pkill -f sox', () => {});
-        exec('killall -9 rec 2>/dev/null || true', () => {});
-      } else if (process.platform === 'win32') {
-        exec('taskkill /F /IM sox.exe /T', () => {});
-      } else {
-        exec('pkill -9 -f sox', () => {});
+      // Warten, damit der Prozess eine Chance hat, sauber zu beenden
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      // Überprüfen, ob der Prozess noch läuft und ggf. härter beenden
+      if (recordingProcess) {
+        try {
+          // SIGINT (Ctrl+C) senden
+          recordingProcess.kill('SIGINT');
+          
+          // Nochmals warten
+          await new Promise(resolve => setTimeout(resolve, 200));
+        } catch (e) {
+          console.log('SIGINT-Signal konnte nicht gesendet werden:', e);
+        }
       }
       
-      // Aufnahme-Callback extra benachrichtigen
+      // Auf macOS: SoX-Prozesse eleganter beenden mit geordneten Befehlen
+      if (process.platform === 'darwin') {
+        // Verwende pkill mit -2 (SIGINT), was ein freundlicherer Befehl ist als -9 (SIGKILL)
+        try {
+          // Mehrere Befehle nacheinander, um sicherzustellen, dass alle SoX-Prozesse beendet werden
+          exec('pkill -2 -f sox', () => {});
+          await new Promise(resolve => setTimeout(resolve, 100));
+          exec('pkill -2 -f rec', () => {});
+          await new Promise(resolve => setTimeout(resolve, 100));
+          
+          // Nur als letzten Ausweg killall verwenden
+          exec('killall -2 sox 2>/dev/null || true', () => {});
+          await new Promise(resolve => setTimeout(resolve, 100));
+        } catch (e) {
+          console.error('Fehler beim sauberen Beenden der SoX-Prozesse:', e);
+        }
+      } else if (process.platform === 'win32') {
+        exec('taskkill /IM sox.exe', () => {}); // Zuerst ohne /F versuchen
+        await new Promise(resolve => setTimeout(resolve, 300));
+        exec('taskkill /F /IM sox.exe /T', () => {}); // Falls nötig mit /F (force)
+      } else {
+        exec('pkill -2 -f sox', () => {}); // SIGINT statt SIGKILL
+        await new Promise(resolve => setTimeout(resolve, 200));
+        exec('pkill -f sox', () => {});
+      }
+      
+      // Aufnahme-Callback benachrichtigen
       recordingProcess = null;
     } catch (error) {
       console.error('Fehler beim Beenden des Aufnahmeprozesses:', error);
     }
   }
   
-  // Overlay-Fenster benachrichtigen
+  // Overlay-Fenster benachrichtigen - direkt mit "Cancelled" statt als recording-stopped
   if (overlayWindow && !overlayWindow.isDestroyed()) {
-    overlayWindow.webContents.send('recording-stopped');
+    overlayWindow.webContents.send('cancel-recording-direct');
   }
   
   // Aufnahmedatei löschen, wenn vorhanden
@@ -479,150 +538,89 @@ async function insertTextAtCursor(text) {
     return;
   }
   
-  // Escape-Zeichen behandeln: Anführungszeichen, Apostrophe und Backslashes für AppleScript escapen
-  const escapedText = text
-    .replace(/\\/g, '\\\\')       // Backslashes verdoppeln
-    .replace(/"/g, '\\"')         // Doppelte Anführungszeichen escapen
-    .replace(/'/g, "\\'")         // Apostrophe escapen
-    .replace(/\n/g, '\\n')        // Zeilenumbrüche als \n kodieren
-    .replace(/\r/g, '\\r')        // Carriage returns als \r kodieren
-    .replace(/\t/g, '\\t');       // Tabs als \t kodieren
+  // Sichere Variante: Text in eine temporäre Datei schreiben und dann einlesen
+  const tempTextFilePath = path.join(app.getPath('temp'), `transbuddy_text_${Date.now()}.txt`);
   
-  // Spezielle Behandlung für TextEdit - erstelle ein neues Dokument
-  if (lastActiveApp === "TextEdit") {
-    // Verwende doppelte Anführungszeichen für AppleScript und escapen für die Shell
-    const textEditScript = `
-      tell application "TextEdit"
+  try {
+    // Text direkt als Datei speichern, statt zu versuchen, ihn im AppleScript zu escapen
+    await writeFileAsync(tempTextFilePath, text);
+    
+    // AppleScript verbessern, um mit möglichen Listen von Anwendungsnamen umzugehen
+    let appName = lastActiveApp;
+    
+    // Wenn lastActiveApp mehrere Anwendungen enthält, nehmen wir nur die erste
+    if (appName.includes(',')) {
+      appName = appName.split(',')[0].trim();
+      console.log(`Mehrere Anwendungen erkannt, verwende die erste: ${appName}`);
+    }
+    
+    // Entferne eventuelle "item X of" Ausdrücke
+    if (appName.includes('item')) {
+      appName = appName.replace(/item \d+ of /g, '').trim();
+      console.log(`"item X of" entfernt, verwende: ${appName}`);
+    }
+    
+    // Zwischenablage-basierte Methode zum Einfügen des Textes
+    const clipboardScript = `
+      set theText to (do shell script "cat '${tempTextFilePath}'")
+      set the clipboard to theText
+      
+      tell application "${appName}"
         activate
-        make new document
         delay 0.5
-        set the text of the front document to "${escapedText}"
+      end tell
+      
+      tell application "System Events"
+        keystroke "v" using {command down}
       end tell
     `;
     
-    return new Promise((resolve, reject) => {
-      // Schreibe das AppleScript als temporäre Datei um Shell-Escaping-Probleme zu vermeiden
-      const tmpScriptPath = path.join(app.getPath('temp'), `transbuddy_script_${Date.now()}.scpt`);
-      
-      fs.writeFile(tmpScriptPath, textEditScript, (writeErr) => {
-        if (writeErr) {
-          console.error('Fehler beim Schreiben des temporären AppleScripts:', writeErr);
-          if (overlayWindow && !overlayWindow.isDestroyed()) {
-            overlayWindow.webContents.send('transcription-error', { 
-              message: 'Text konnte nicht in TextEdit eingefügt werden.' 
-            });
-          }
-          reject(writeErr);
-          return;
-        }
-        
-        // Führe das AppleScript aus der Datei aus anstatt direkt
+    const tmpScriptPath = path.join(app.getPath('temp'), `transbuddy_script_${Date.now()}.scpt`);
+    await writeFileAsync(tmpScriptPath, clipboardScript);
+    
+    try {
+      await new Promise((resolve, reject) => {
         exec(`osascript "${tmpScriptPath}"`, (error, stdout, stderr) => {
-          // Datei entfernen
-          fs.unlink(tmpScriptPath, () => {});
+          try { fs.unlinkSync(tmpScriptPath); } catch (e) {}
           
           if (error || stderr) {
-            console.error('Fehler beim Einfügen in TextEdit:', error || stderr);
-            if (overlayWindow && !overlayWindow.isDestroyed()) {
-              overlayWindow.webContents.send('transcription-error', { 
-                message: 'Text konnte nicht in TextEdit eingefügt werden.' 
-              });
-            }
+            console.error('Fehler bei der Texteingabe mit Zwischenablage:', error || stderr);
             reject(error || new Error(stderr));
           } else {
-            if (overlayWindow && !overlayWindow.isDestroyed()) {
-              overlayWindow.webContents.send('text-inserted');
-            }
             resolve();
           }
         });
       });
-    });
-  }
-  
-  // Für andere Anwendungen: Direkte Texteingabe mit Zwischenablage
-  // Verwende die Zwischenablage-Methode, da sie zuverlässiger ist für komplexe Strings
-  const clipboardScript = `
-    set the clipboard to "${escapedText}"
-    
-    tell application "${lastActiveApp}"
-      activate
-      delay 0.5
-    end tell
-    
-    tell application "System Events"
-      keystroke "v" using {command down}
-    end tell
-  `;
-  
-  return new Promise((resolve, reject) => {
-    // Schreibe das AppleScript als temporäre Datei
-    const tmpScriptPath = path.join(app.getPath('temp'), `transbuddy_script_${Date.now()}.scpt`);
-    
-    fs.writeFile(tmpScriptPath, clipboardScript, (writeErr) => {
-      if (writeErr) {
-        console.error('Fehler beim Schreiben des temporären AppleScripts:', writeErr);
-        reject(writeErr);
-        return;
-      }
       
-      exec(`osascript "${tmpScriptPath}"`, (error, stdout, stderr) => {
-        // Datei entfernen
-        fs.unlink(tmpScriptPath, () => {});
-        
-        if (error || stderr) {
-          console.error('Fehler bei der Texteingabe:', error || stderr);
-          
-          // Bei Fehler: Fallback zu TextEdit
-          const textEditFallbackScript = `
-            tell application "TextEdit"
-              activate
-              make new document
-              delay 0.5
-              set the text of the front document to "${escapedText}"
-            end tell
-          `;
-          
-          const fallbackPath = path.join(app.getPath('temp'), `transbuddy_fallback_${Date.now()}.scpt`);
-          
-          fs.writeFile(fallbackPath, textEditFallbackScript, (fallbackWriteErr) => {
-            if (fallbackWriteErr) {
-              console.error('Fehler beim Schreiben des Fallback-Scripts:', fallbackWriteErr);
-              reject(fallbackWriteErr);
-              return;
-            }
-            
-            exec(`osascript "${fallbackPath}"`, (teError, teStdout, teStderr) => {
-              // Fallback-Datei entfernen
-              fs.unlink(fallbackPath, () => {});
-              
-              if (teError || teStderr) {
-                console.error('TextEdit-Fallback fehlgeschlagen:', teError || teStderr);
-                
-                if (overlayWindow && !overlayWindow.isDestroyed()) {
-                  overlayWindow.webContents.send('transcription-error', { 
-                    message: 'Text konnte nicht eingefügt werden. Versuche, die App-Berechtigungen zu überprüfen.' 
-                  });
-                }
-                
-                reject(new Error(`Texteingabe-Methoden fehlgeschlagen`));
-              } else {
-                if (overlayWindow && !overlayWindow.isDestroyed()) {
-                  overlayWindow.webContents.send('text-inserted', { usedFallback: true });
-                }
-                resolve();
-              }
-            });
-          });
-        } else {
-          if (overlayWindow && !overlayWindow.isDestroyed()) {
-            overlayWindow.webContents.send('text-inserted');
-          }
-          resolve();
-        }
+      if (overlayWindow && !overlayWindow.isDestroyed()) {
+        overlayWindow.webContents.send('text-inserted');
+      }
+    } catch (error) {
+      console.error('Texteingabe fehlgeschlagen:', error);
+      // Keine Fallback-Methode mehr verwenden, wie gewünscht
+      if (overlayWindow && !overlayWindow.isDestroyed()) {
+        overlayWindow.webContents.send('transcription-error', { 
+          message: 'Text konnte nicht eingefügt werden: ' + error.message
+        });
+      }
+    }
+  } catch (error) {
+    console.error('Fehler beim Schreiben der temporären Textdatei:', error);
+    if (overlayWindow && !overlayWindow.isDestroyed()) {
+      overlayWindow.webContents.send('transcription-error', { 
+        message: 'Text konnte nicht verarbeitet werden.' 
       });
-    });
-  });
+    }
+  } finally {
+    // Temporäre Textdatei aufräumen
+    try {
+      if (fs.existsSync(tempTextFilePath)) {
+        fs.unlinkSync(tempTextFilePath);
+      }
+    } catch (e) {
+      console.error('Konnte temporäre Textdatei nicht löschen:', e);
+    }
+  }
 }
 
 // Audio an API senden und Transkription abrufen

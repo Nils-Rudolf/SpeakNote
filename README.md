@@ -1,5 +1,7 @@
 # TransBuddy
 
+Basically Apple's dictation feature with better voice transcription. 
+
 TransBuddy is a macOS application that enables automatic speech-to-text transcription using a global hotkey. The app runs in the background, is accessible via the menu bar, and helps you quickly convert spoken language into text inserted at the current cursor position.
 
 ## Features

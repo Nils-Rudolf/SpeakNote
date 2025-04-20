@@ -3,6 +3,7 @@ const statusText = document.getElementById('statusText');
 const timer = document.getElementById('timer');
 const toggleRecordingButton = document.getElementById('toggleRecording');
 const closeButton = document.getElementById('closeButton');
+const closeWindowButton = document.getElementById('closeWindowButton');
 const errorMessage = document.getElementById('errorMessage');
 const audioVisualizer = document.getElementById('audioVisualizer');
 
@@ -210,8 +211,11 @@ function drawVisualization() {
 
 // Starte regelmäßige Aktualisierung der Audiodaten
 function startVisualizationTimer() {
-  // Verlauf zurücksetzen
+  // Verlauf zurücksetzen und vorherige Timer stoppen
   visualizationHistory.length = 0;
+  
+  // Sicherstellen, dass kein vorheriger Timer noch läuft
+  stopVisualizationTimer();
   
   // Regelmäßig Audioamplitude erfassen (10 Mal pro Sekunde)
   visualizationInterval = setInterval(() => {
@@ -290,6 +294,30 @@ async function stopRecording() {
   await stopAudioAnalysis();
 }
 
+// Zurücksetzen aller UI-Elemente in den Ausgangszustand
+function resetUI() {
+  // Timer zurücksetzen
+  timer.textContent = '0:00';
+  
+  // Status zurücksetzen
+  statusText.textContent = 'Start Recording';
+  
+  // Aufnahme-Status zurücksetzen
+  recording = false;
+  toggleRecordingButton.classList.remove('recording');
+  
+  // Fehler ausblenden
+  hideError();
+  
+  // Statische Wellenform zeichnen
+  drawStaticWaveform();
+}
+
+// Fenster schließen
+function closeWindow() {
+  window.electronAPI.closeOverlay();
+}
+
 // Aufnahme wechseln
 async function toggleRecording() {
   try {
@@ -310,11 +338,13 @@ async function toggleRecording() {
 function showError(message) {
   errorMessage.textContent = message;
   errorMessage.classList.add('visible');
+  statusText.style.opacity = '0'; // Status-Text ausblenden, wenn Fehler angezeigt wird
 }
 
 // Fehlermeldung ausblenden
 function hideError() {
   errorMessage.classList.remove('visible');
+  statusText.style.opacity = '1'; // Status-Text wieder einblenden
 }
 
 // Event-Listener
@@ -324,36 +354,69 @@ toggleRecordingButton.addEventListener('click', toggleRecording);
 closeButton.addEventListener('click', async () => {
   if (recording) {
     try {
-      // Wir setzen den Status direkt auf "Cancelled"
-      statusText.textContent = 'Cancelled';
+      // Vor dem Senden des Cancel-Befehls direkt UI aktualisieren
+      statusText.textContent = 'Start Recording';
       
-      // Lokale Audio-Analyse stoppen
-      await stopAudioAnalysis();
-      
-      // Timer stoppen
+      // Timer sofort stoppen
       clearInterval(timerInterval);
+      timerInterval = null;
       
-      // Aufnahme-Status zurücksetzen
+      // Aufnahme-Status sofort zurücksetzen
       recording = false;
       toggleRecordingButton.classList.remove('recording');
       
+      // Audio-Analyse sofort stoppen
+      await stopAudioAnalysis();
+      
       // Über IPC an den Hauptprozess senden, dass Aufnahme abgebrochen wurde
-      // Aber explizit ohne Transkription
       await window.electronAPI.cancelRecording();
       
-      // Nach kurzer Zeit den Status leeren
+      // Timer sofort zurücksetzen (nicht warten)
+      timer.textContent = '0:00';
+      
+      // Nach kurzer Zeit den Status zurücksetzen
       setTimeout(() => {
-        statusText.textContent = '';
-        // Statische Wellenform wieder anzeigen
-        drawStaticWaveform();
+        resetUI();
       }, 2000);
     } catch (error) {
       console.error('Fehler beim Abbrechen der Aufnahme:', error);
       showError('Failed to cancel recording');
     }
   } else {
-    // Wenn keine Aufnahme läuft, einfach Status zurücksetzen
-    statusText.textContent = '';
+    // Wenn keine Aufnahme läuft, sofort in den Ausgangszustand zurückkehren
+    resetUI();
+  }
+});
+
+// Apple-Style X-Button schließt das Fenster
+closeWindowButton.addEventListener('click', () => {
+  // Aufnahme stoppen, falls aktiv
+  if (recording) {
+    window.electronAPI.cancelRecording().then(() => {
+      closeWindow();
+    }).catch(error => {
+      console.error('Fehler beim Beenden der Aufnahme:', error);
+      closeWindow();
+    });
+  } else {
+    closeWindow();
+  }
+});
+
+// ESC-Taste zum Schließen des Fensters
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') {
+    // Aufnahme stoppen, falls aktiv
+    if (recording) {
+      window.electronAPI.cancelRecording().then(() => {
+        closeWindow();
+      }).catch(error => {
+        console.error('Fehler beim Beenden der Aufnahme:', error);
+        closeWindow();
+      });
+    } else {
+      closeWindow();
+    }
   }
 });
 
@@ -366,6 +429,28 @@ window.electronAPI.onRecordingStopped(() => {
   stopRecording();
 });
 
+window.electronAPI.onCancelRecordingDirect(() => {
+  // Direkter Abbruch der Aufnahme ohne Übergang zu "Transcribing"
+  recording = false;
+  statusText.textContent = 'Start Recording';
+  
+  // Timer und Aufnahme sofort stoppen
+  clearInterval(timerInterval);
+  timerInterval = null;
+  toggleRecordingButton.classList.remove('recording');
+  
+  // Audio-Analyse stoppen (ohne await, da wir keinen Status-Wechsel wollen)
+  stopAudioAnalysis();
+  
+  // Timer zurücksetzen
+  timer.textContent = '0:00';
+  
+  // Nach kurzer Verzögerung UI zurücksetzen
+  setTimeout(() => {
+    resetUI();
+  }, 2000);
+});
+
 window.electronAPI.onTranscriptionStarted(() => {
   statusText.textContent = 'Transcribing';
 });
@@ -375,18 +460,28 @@ window.electronAPI.onTranscriptionCompleted(() => {
   
   // Status nach kurzer Zeit zurücksetzen
   setTimeout(() => {
-    statusText.textContent = '';
+    resetUI();
   }, 2000);
 });
 
 window.electronAPI.onRecordingError((data) => {
   stopRecording();
   showError(data.message || 'Recording error');
+  
+  // Nach kurzer Zeit in den Ausgangszustand zurückkehren
+  setTimeout(() => {
+    resetUI();
+  }, 3000);
 });
 
 window.electronAPI.onTranscriptionError((data) => {
   statusText.textContent = '';
   showError(data.message || 'Transcription error');
+  
+  // Nach kurzer Zeit in den Ausgangszustand zurückkehren
+  setTimeout(() => {
+    resetUI();
+  }, 3000);
 });
 
 // Text-Einfügung
@@ -395,12 +490,12 @@ window.electronAPI.onTextInserted(() => {
   
   // Status nach kurzer Zeit zurücksetzen
   setTimeout(() => {
-    statusText.textContent = '';
+    resetUI();
   }, 2000);
 });
 
 // Visualisierung initialisieren
 initVisualizer();
 
-// Initialen Timer-Wert setzen
-timer.textContent = '0:00';
+// Initialen Timer-Wert setzen und Status anzeigen
+resetUI();

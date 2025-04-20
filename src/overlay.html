@@ -8,6 +8,16 @@
 </head>
 <body>
   <div class="overlay-container">
+    <!-- Apple-Style X-Button oben links -->
+    <button id="closeWindowButton" class="apple-close-button" title="Close window">×</button>
+    
+    <!-- Status-Container mit Status und Error in derselben Position -->
+    <div class="status-container">
+      <div id="statusText" class="status-text">Start Recording</div>
+      <div id="errorMessage" class="error-message"></div>
+    </div>
+    
+    <!-- Visualisierung und Buttons darunter -->
     <div class="controls-row">
       <button id="closeButton" class="control-button cancel-button">×</button>
       <div class="waveform-container">
@@ -17,12 +27,11 @@
         <span id="timer">0:00</span>
       </div>
       <button id="toggleRecording" class="control-button confirm-button">
-        <span class="check-icon">✓</span>
+        <svg class="check-icon" viewBox="0 0 24 24" width="18" height="18">
+          <path fill="white" d="M9,16.17L4.83,12l-1.42,1.41L9,19 21,7l-1.41-1.41L9,16.17z"/>
+        </svg>
       </button>
     </div>
-    
-    <div id="statusText" class="status-text"></div>
-    <div id="errorMessage" class="error-message"></div>
   </div>
   
   <script src="overlay.js"></script>
