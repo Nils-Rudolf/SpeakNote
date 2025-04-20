@@ -13,32 +13,18 @@ let recordingStartTime = 0;
 let timerInterval = null;
 let animationFrame = null;
 
-// Statische vertikale Waveform-Balken - wie im Bild
-function generateWaveformBars(count) {
-  const bars = [];
-  for (let i = 0; i < count; i++) {
-    // Abwechselnde Höhen für die Balken, ähnlich wie im Screenshot
-    let height;
-    
-    // Erzeuge ein Muster mit verschiedenen Höhen
-    if (i % 12 === 0 || i % 12 === 7) {
-      height = 0.95; // Hohe Balken
-    } else if (i % 8 === 0 || i % 7 === 0) {
-      height = 0.8; // Mittlere Balken
-    } else if (i % 3 === 0) {
-      height = 0.6; // Kleinere Balken
-    } else if (i % 2 === 0) {
-      height = 0.4; // Noch kleinere Balken
-    } else {
-      height = 0.2; // Kleinste Balken
-    }
-    
-    bars.push(height);
-  }
-  return bars;
-}
+// Audio-Analyse-Variablen
+let audioContext = null;
+let analyser = null;
+let microphone = null;
+let dataArray = null;
+let bufferLength = 0;
 
-const waveformBars = generateWaveformBars(50);
+// Visualisierungs-Variablen
+const visualizationHistory = [];
+const maxVisualBars = 60; // Wie viele Balken sollen maximal angezeigt werden
+const visualizationRate = 100; // 10 Balken pro Sekunde (100ms Intervall)
+let visualizationInterval = null;
 
 // Initialisieren des Visualizers
 function initVisualizer() {
@@ -52,35 +38,209 @@ function initVisualizer() {
   resizeCanvas();
   window.addEventListener('resize', resizeCanvas);
   
-  // Initial zeichnen
-  drawWaveform();
+  // Initial zeichnen (statisches Muster für den Anfang)
+  drawStaticWaveform();
 }
 
-// Wellenform zeichnen (vertikale Balken im Stil des Screenshots)
-function drawWaveform() {
+// Statische Wellenform zeichnen (wird nur angezeigt, wenn keine Aufnahme läuft)
+function drawStaticWaveform() {
   const width = audioVisualizer.width;
   const height = audioVisualizer.height;
   
   // Hintergrund löschen
   ctx.clearRect(0, 0, width, height);
   
-  const barCount = waveformBars.length;
-  const barWidth = 1; // Schmale Balken wie im Bild
-  const spacing = 2; // Abstand zwischen Balken
-  
+  // Statt einer einzelnen Linie zeichnen wir feine, schwach sichtbare vertikale Linien
+  // als Platzhalter für die aktive Visualisierung
+  const barCount = maxVisualBars;
+  const barWidth = 1;
+  const spacing = Math.floor((width - (barCount * barWidth)) / (barCount - 1));
   const totalBarWidth = barWidth + spacing;
-  const startX = (width - (barCount * totalBarWidth)) / 2;
   
-  // Stil für die Balken
-  ctx.fillStyle = '#000'; // Schwarze Balken wie im Bild
+  // Stil für die statischen Linien
+  ctx.fillStyle = '#cccccc'; // Hellgrauer Farbton für die inaktiven Linien
   
-  // Zeichne die vertikalen Balken
+  // Zeichne die vertikalen Linien über die gesamte Breite
   for (let i = 0; i < barCount; i++) {
-    const x = startX + (i * totalBarWidth);
-    const barHeight = waveformBars[i] * height;
-    const y = (height - barHeight) / 2;
+    const x = i * totalBarWidth;
+    const barHeight = height * 0.2; // 20% der Höhe
+    const y = (height - barHeight) / 2; // Zentriert
     
     ctx.fillRect(x, y, barWidth, barHeight);
+  }
+}
+
+// Echte Audio-Visualisierung mit Web Audio API
+async function setupAudioVisualization() {
+  try {
+    // Falls bereits initialisiert, zurücksetzen
+    if (audioContext) {
+      await stopAudioAnalysis();
+    }
+    
+    // Audio-Kontext erstellen
+    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    analyser = audioContext.createAnalyser();
+    
+    // FFT-Größe für die Frequenzanalyse einstellen
+    analyser.fftSize = 256;
+    bufferLength = analyser.frequencyBinCount;
+    dataArray = new Uint8Array(bufferLength);
+    
+    // Mikrofon-Stream anfordern
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    
+    // Mikrofon mit Audio-Kontext verbinden
+    microphone = audioContext.createMediaStreamSource(stream);
+    microphone.connect(analyser);
+    
+    // Animation starten
+    drawVisualization();
+    
+    // Starte regelmäßige Aktualisierung der Audiodaten
+    startVisualizationTimer();
+    
+    return true;
+  } catch (error) {
+    console.error('Audio-Visualisierung konnte nicht initialisiert werden:', error);
+    showError('Mikrofon-Zugriff verweigert oder nicht verfügbar');
+    return false;
+  }
+}
+
+// Audio-Analyse stoppen
+async function stopAudioAnalysis() {
+  if (!audioContext) return;
+  
+  cancelAnimationFrame(animationFrame);
+  
+  if (microphone) {
+    microphone.disconnect();
+    microphone = null;
+  }
+  
+  if (audioContext.state !== 'closed') {
+    await audioContext.close();
+  }
+  
+  audioContext = null;
+  analyser = null;
+  dataArray = null;
+  
+  // Statisches Muster anzeigen
+  drawStaticWaveform();
+  
+  // Stoppe die regelmäßige Aktualisierung
+  stopVisualizationTimer();
+}
+
+// Animationsfunktion für die Mikrofon-Visualisierung
+function animateMicrophone() {
+  if (!analyser || !recording) return;
+  
+  animationFrame = requestAnimationFrame(animateMicrophone);
+  
+  // Frequenzdaten abrufen
+  analyser.getByteFrequencyData(dataArray);
+  
+  // Durchschnittliche Amplitude berechnen (vereinfacht)
+  let sum = 0;
+  const sampleSize = Math.min(bufferLength, 32); // Wir verwenden nur einen Teil des Spektrums
+  for (let i = 0; i < sampleSize; i++) {
+    sum += dataArray[i];
+  }
+  const averageAmplitude = sum / sampleSize / 255; // Normalisieren auf 0-1
+  
+  drawVisualization();
+}
+
+// Die Visualisierung der Audioamplitude zeichnen
+function drawVisualization() {
+  const width = audioVisualizer.width;
+  const height = audioVisualizer.height;
+  
+  // Hintergrund löschen
+  ctx.clearRect(0, 0, width, height);
+  
+  // Parameter für die visuelle Darstellung
+  const barWidth = 2;
+  const spacing = 3;
+  const totalBarWidth = barWidth + spacing;
+  const startX = 0;
+  
+  // Zeichne die vertikalen Balken von rechts nach links
+  ctx.fillStyle = '#000000'; // Schwarze Balken
+  
+  for (let i = 0; i < visualizationHistory.length; i++) {
+    // Jeder Balken ist eine vertikale Linie, deren Höhe der 
+    // aufgenommenen Amplitude zu diesem Zeitpunkt entspricht
+    const barHeight = visualizationHistory[i] * height * 0.8; // 80% der maximalen Höhe
+    
+    // X-Position: von rechts nach links
+    const x = startX + i * totalBarWidth;
+    
+    // Y-Position: zentriert vertikal
+    const y = (height - barHeight) / 2;
+    
+    // Zeichne den Balken
+    ctx.fillRect(x, y, barWidth, barHeight);
+  }
+  
+  // Fülle den restlichen Raum mit den statischen Linien
+  if (visualizationHistory.length < maxVisualBars) {
+    const remainingBars = maxVisualBars - visualizationHistory.length;
+    const offsetX = visualizationHistory.length * totalBarWidth;
+    
+    ctx.fillStyle = '#cccccc'; // Hellgrau für statische Balken
+    
+    for (let i = 0; i < remainingBars; i++) {
+      const x = offsetX + i * totalBarWidth;
+      const barHeight = height * 0.2; // 20% Höhe für statische Balken
+      const y = (height - barHeight) / 2;
+      
+      ctx.fillRect(x, y, barWidth, barHeight);
+    }
+  }
+  
+  // Animation fortsetzen
+  if (recording) {
+    animationFrame = requestAnimationFrame(drawVisualization);
+  }
+}
+
+// Starte regelmäßige Aktualisierung der Audiodaten
+function startVisualizationTimer() {
+  // Verlauf zurücksetzen
+  visualizationHistory.length = 0;
+  
+  // Regelmäßig Audioamplitude erfassen (10 Mal pro Sekunde)
+  visualizationInterval = setInterval(() => {
+    if (!analyser || !recording) return;
+    
+    // Frequenzdaten abrufen
+    analyser.getByteFrequencyData(dataArray);
+    
+    // Durchschnittliche Amplitude berechnen
+    let sum = 0;
+    const sampleSize = Math.min(bufferLength, 32);
+    for (let i = 0; i < sampleSize; i++) {
+      sum += dataArray[i];
+    }
+    const averageAmplitude = sum / sampleSize / 255;
+    
+    // Neue Amplitude zum Verlauf hinzufügen (von rechts)
+    visualizationHistory.unshift(averageAmplitude);
+    if (visualizationHistory.length > maxVisualBars) {
+      visualizationHistory.pop();
+    }
+  }, visualizationRate); // 100ms = 10 Updates pro Sekunde
+}
+
+// Stoppe die regelmäßige Aktualisierung
+function stopVisualizationTimer() {
+  if (visualizationInterval) {
+    clearInterval(visualizationInterval);
+    visualizationInterval = null;
   }
 }
 
@@ -96,13 +256,16 @@ function updateTimer() {
 }
 
 // Aufnahme starten
-function startRecording() {
+async function startRecording() {
   recording = true;
   recordingStartTime = Date.now();
   
   // UI aktualisieren
-  statusText.textContent = 'Aufnahme läuft...';
+  statusText.textContent = 'Recording';
   toggleRecordingButton.classList.add('recording');
+  
+  // Audio-Visualisierung starten
+  await setupAudioVisualization();
   
   // Timer starten
   timerInterval = setInterval(updateTimer, 1000);
@@ -113,15 +276,18 @@ function startRecording() {
 }
 
 // Aufnahme stoppen
-function stopRecording() {
+async function stopRecording() {
   recording = false;
   
   // UI aktualisieren
-  statusText.textContent = 'Transkribiere...';
+  statusText.textContent = 'Transcribing';
   toggleRecordingButton.classList.remove('recording');
   
   // Timer stoppen
   clearInterval(timerInterval);
+  
+  // Audio-Analyse stoppen
+  await stopAudioAnalysis();
 }
 
 // Aufnahme wechseln
@@ -135,8 +301,8 @@ async function toggleRecording() {
       stopRecording();
     }
   } catch (error) {
-    showError('Fehler beim Starten/Stoppen der Aufnahme');
-    console.error('Fehler beim Steuern der Aufnahme:', error);
+    showError('Error starting/stopping recording');
+    console.error('Error controlling recording:', error);
   }
 }
 
@@ -153,11 +319,42 @@ function hideError() {
 
 // Event-Listener
 toggleRecordingButton.addEventListener('click', toggleRecording);
-closeButton.addEventListener('click', () => {
+
+// Abbrechen-Button stoppt die Aufnahme, aber schließt das Fenster nicht
+closeButton.addEventListener('click', async () => {
   if (recording) {
-    toggleRecording(); // Erst Aufnahme stoppen
+    try {
+      // Wir setzen den Status direkt auf "Cancelled"
+      statusText.textContent = 'Cancelled';
+      
+      // Lokale Audio-Analyse stoppen
+      await stopAudioAnalysis();
+      
+      // Timer stoppen
+      clearInterval(timerInterval);
+      
+      // Aufnahme-Status zurücksetzen
+      recording = false;
+      toggleRecordingButton.classList.remove('recording');
+      
+      // Über IPC an den Hauptprozess senden, dass Aufnahme abgebrochen wurde
+      // Aber explizit ohne Transkription
+      await window.electronAPI.cancelRecording();
+      
+      // Nach kurzer Zeit den Status leeren
+      setTimeout(() => {
+        statusText.textContent = '';
+        // Statische Wellenform wieder anzeigen
+        drawStaticWaveform();
+      }, 2000);
+    } catch (error) {
+      console.error('Fehler beim Abbrechen der Aufnahme:', error);
+      showError('Failed to cancel recording');
+    }
+  } else {
+    // Wenn keine Aufnahme läuft, einfach Status zurücksetzen
+    statusText.textContent = '';
   }
-  window.close();
 });
 
 // Event-Listener für Aufnahme-Events
@@ -170,25 +367,40 @@ window.electronAPI.onRecordingStopped(() => {
 });
 
 window.electronAPI.onTranscriptionStarted(() => {
-  statusText.textContent = 'Transkribiere...';
+  statusText.textContent = 'Transcribing';
 });
 
-window.electronAPI.onTranscriptionCompleted((data) => {
-  statusText.textContent = 'Transkription abgeschlossen';
+window.electronAPI.onTranscriptionCompleted(() => {
+  statusText.textContent = 'Complete';
+  
+  // Status nach kurzer Zeit zurücksetzen
   setTimeout(() => {
-    statusText.textContent = 'Bereit';
-  }, 1500);
+    statusText.textContent = '';
+  }, 2000);
 });
 
 window.electronAPI.onRecordingError((data) => {
   stopRecording();
-  showError(data.message || 'Aufnahmefehler');
+  showError(data.message || 'Recording error');
 });
 
 window.electronAPI.onTranscriptionError((data) => {
-  statusText.textContent = 'Bereit';
-  showError(data.message || 'Transkriptionsfehler');
+  statusText.textContent = '';
+  showError(data.message || 'Transcription error');
+});
+
+// Text-Einfügung
+window.electronAPI.onTextInserted(() => {
+  statusText.textContent = 'Text inserted';
+  
+  // Status nach kurzer Zeit zurücksetzen
+  setTimeout(() => {
+    statusText.textContent = '';
+  }, 2000);
 });
 
 // Visualisierung initialisieren
 initVisualizer();
+
+// Initialen Timer-Wert setzen
+timer.textContent = '0:00';

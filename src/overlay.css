@@ -1,10 +1,10 @@
 :root {
-  --background-color: rgba(240, 240, 240, 0.95);
-  --text-color: #333;
-  --border-color: rgba(220, 220, 220, 0.8);
-  --primary-color: #000;
-  --recording-color: #f44336;
-  --bar-color: #000;
+  --background-color: #f7f8f8;
+  --text-color: #7b7c7c;
+  --cancel-bg-color: #e3e4e5;
+  --cancel-text-color: #000;
+  --confirm-bg-color: #000;
+  --confirm-text-color: #fff;
   --error-color: #f44336;
 }
 
@@ -24,12 +24,10 @@ body {
 
 .overlay-container {
   width: 100%;
-  padding: 15px;
+  padding: 12px 15px;
   background-color: var(--background-color);
-  border-radius: 8px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-  -webkit-backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
+  border-radius: 20px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
   display: flex;
   flex-direction: column;
 }
@@ -50,7 +48,7 @@ body {
 }
 
 .close-button:hover {
-  color: var(--recording-color);
+  color: var(--error-color);
 }
 
 .recording-status {
@@ -68,7 +66,7 @@ body {
 }
 
 .recording-indicator.active {
-  background-color: var(--recording-color);
+  background-color: var(--error-color);
   animation: pulse 1.5s infinite;
 }
 
@@ -104,7 +102,7 @@ body {
 
 #audioVisualizer {
   width: 100%;
-  height: 30px;
+  height: 40px;
 }
 
 .controls {
@@ -117,13 +115,14 @@ body {
 .controls-row {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   width: 100%;
   -webkit-app-region: no-drag;
 }
 
 .control-button {
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   border: none;
   display: flex;
@@ -131,15 +130,14 @@ body {
   justify-content: center;
   cursor: pointer;
   font-weight: bold;
-  font-size: 18px;
+  font-size: 16px;
   transition: background-color 0.2s;
-  margin: 0 5px;
   -webkit-app-region: no-drag;
 }
 
 .cancel-button {
-  background-color: var(--border-color);
-  color: #555;
+  background-color: var(--cancel-bg-color);
+  color: var(--cancel-text-color);
 }
 
 .cancel-button:hover {
@@ -147,8 +145,8 @@ body {
 }
 
 .confirm-button {
-  background-color: #000;
-  color: #fff;
+  background-color: var(--confirm-bg-color);
+  color: var(--confirm-text-color);
 }
 
 .confirm-button:hover {
@@ -161,10 +159,10 @@ body {
 
 .waveform-container {
   flex: 1;
-  height: 36px;
+  height: 40px;
   display: flex;
   align-items: center;
-  margin: 0 10px;
+  margin: 0 15px;
   position: relative;
   background-color: transparent;
 }
@@ -176,7 +174,7 @@ body {
   padding: 6px 15px;
   border: none;
   border-radius: 20px;
-  background-color: var(--primary-color);
+  background-color: var(--confirm-bg-color);
   color: white;
   cursor: pointer;
   transition: background-color 0.3s;
@@ -187,7 +185,7 @@ body {
 }
 
 .record-button.recording {
-  background-color: var(--recording-color);
+  background-color: var(--error-color);
 }
 
 .record-button.recording:hover {
@@ -203,18 +201,18 @@ body {
 }
 
 .timer {
-  font-family: monospace;
-  font-weight: bold;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  font-weight: 500;
   font-size: 14px;
-  margin-right: 5px;
-  color: #000;
+  margin-right: 15px;
+  color: var(--text-color);
 }
 
 .status-text {
-  margin-top: 15px;
+  margin-top: 8px;
   text-align: center;
   font-size: 14px;
-  color: #666;
+  color: var(--text-color);
 }
 
 .error-message {

@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   
   // Aufnahme-Steuerung
   toggleRecording: () => ipcRenderer.invoke('toggle-recording'),
+  cancelRecording: () => ipcRenderer.invoke('cancel-recording'), // Neue Funktion zum Abbrechen
   
   // Overlay schließen
   closeOverlay: () => ipcRenderer.invoke('close-overlay'),
