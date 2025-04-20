@@ -89,7 +89,7 @@ function createOverlayWindow() {
     frame: false,
     transparent: true,
     alwaysOnTop: true,
-    focusable: false, // Wichtig: Fenster erhält keinen Fokus
+    focusable: false, // Auf false setzen, da wir die ESC-Taste nicht mehr benötigen
     skipTaskbar: true,
     show: false, // Initial versteckt
     webPreferences: {
@@ -182,16 +182,70 @@ async function getAudioDevices() {
 // Aktive Anwendung vor dem Öffnen des Overlays erfassen
 async function captureActiveApplication() {
   return new Promise((resolve) => {
-    exec('osascript -e \'tell application "System Events" to name of first application process whose frontmost is true\'', 
-      (error, stdout) => {
-        if (error) {
-          console.error('Fehler beim Ermitteln der aktiven Anwendung:', error);
-          resolve(null);
+    // Verbesserte AppleScript-Version, die versucht, die richtige aktive App zu erkennen und nicht Electron/TransBuddy selbst
+    const script = `
+      tell application "System Events"
+        set frontApp to name of first application process whose frontmost is true
+        
+        if frontApp is "Electron" or frontApp contains "TransBuddy" then
+          # Wir haben unsere eigene App erkannt, versuche eine andere aktive App zu finden
+          tell application "System Events"
+            set allVisibleProcesses to name of every process whose visible is true
+          end tell
+          
+          # Filtere Electron/TransBuddy aus der Liste
+          set filteredApps to {}
+          repeat with appName in allVisibleProcesses
+            if appName is not "Electron" and appName does not contain "TransBuddy" and appName is not "Finder" then
+              set end of filteredApps to appName
+            end if
+          end repeat
+          
+          # Falls andere Apps gefunden wurden, nimm die erste
+          if length of filteredApps > 0 then
+            return first item of filteredApps
+          else
+            # Fallback zu TextEdit, wenn nichts Besseres gefunden wurde
+            return "TextEdit"
+          end if
+        else
+          # Eine andere App ist bereits aktiv - nutze diese
+          return frontApp
+        end if
+      end tell
+    `;
+    
+    exec(`osascript -e '${script}'`, (error, stdout, stderr) => {
+      if (error) {
+        console.error('Fehler beim Ermitteln der aktiven Anwendung:', error);
+        // Fallback zu TextEdit, falls nichts gefunden wurde
+        lastActiveApp = "TextEdit";
+        
+        // Öffne TextEdit, falls es nicht bereits läuft
+        exec('open -a TextEdit', (openError) => {
+          if (openError) {
+            console.error('Fehler beim Öffnen von TextEdit:', openError);
+          }
+          resolve(lastActiveApp);
+        });
+      } else {
+        lastActiveApp = stdout.trim();
+        
+        // Falls die erkannte App Electron oder leer ist, verwende TextEdit als Fallback
+        if (lastActiveApp === "Electron" || lastActiveApp.includes("TransBuddy") || !lastActiveApp) {
+          lastActiveApp = "TextEdit";
+          
+          // Öffne TextEdit, falls es nicht bereits läuft
+          exec('open -a TextEdit', (openError) => {
+            if (openError) {
+              console.error('Fehler beim Öffnen von TextEdit:', openError);
+            }
+            resolve(lastActiveApp);
+          });
         } else {
-          lastActiveApp = stdout.trim();
-          console.log('Aktive Anwendung erfasst:', lastActiveApp);
           resolve(lastActiveApp);
         }
+      }
     });
   });
 }
@@ -237,8 +291,6 @@ async function startRecording() {
     // Mit Standard-Gerät
     recordCmd = `sox -d -r 44100 -c 1 "${recordingFilePath}"`;
   }
-  
-  console.log(`Starte Aufnahme mit Befehl: ${recordCmd}`);
   
   recordingProcess = exec(recordCmd, (error) => {
     if (error && !error.killed) {
@@ -315,8 +367,6 @@ async function insertTextAtCursor(text) {
     return;
   }
   
-  console.log(`Versuche Text in Anwendung "${lastActiveApp}" einzufügen...`);
-  
   // Escape-Zeichen behandeln: Anführungszeichen und Backslashes für AppleScript escapen
   const escapedText = text
     .replace(/\\/g, '\\\\')    // Backslashes verdoppeln
@@ -325,7 +375,38 @@ async function insertTextAtCursor(text) {
     .replace(/\r/g, '\\r')     // Carriage returns als \r kodieren
     .replace(/\t/g, '\\t');    // Tabs als \t kodieren
   
-  // Verbesserte Variante des AppleScripts
+  // Spezielle Behandlung für TextEdit - erstelle ein neues Dokument
+  if (lastActiveApp === "TextEdit") {
+    const textEditScript = `
+      tell application "TextEdit"
+        activate
+        make new document
+        delay 0.5
+        set the text of the front document to "${escapedText}"
+      end tell
+    `;
+    
+    return new Promise((resolve, reject) => {
+      exec(`osascript -e '${textEditScript}'`, (error, stderr) => {
+        if (error || stderr) {
+          console.error('Fehler beim Einfügen in TextEdit:', error || stderr);
+          if (overlayWindow && !overlayWindow.isDestroyed()) {
+            overlayWindow.webContents.send('transcription-error', { 
+              message: 'Text konnte nicht in TextEdit eingefügt werden.' 
+            });
+          }
+          reject(error || new Error(stderr));
+        } else {
+          if (overlayWindow && !overlayWindow.isDestroyed()) {
+            overlayWindow.webContents.send('text-inserted');
+          }
+          resolve();
+        }
+      });
+    });
+  }
+  
+  // Für andere Anwendungen: Direkte Texteingabe ohne Zwischenablage
   const script = `
     on isRunning(appName)
       tell application "System Events" to (name of processes) contains appName
@@ -342,11 +423,9 @@ async function insertTextAtCursor(text) {
       
       try
         tell application "System Events"
-          keystroke "v" using {command down}
-          delay 0.2
+          # Direkte Texteingabe ohne Zwischenablage
           keystroke "${escapedText}"
         end tell
-        return "Erfolgreich: Text wurde eingefügt."
       on error errMsg
         return "Fehler bei Texteingabe: " & errMsg
       end try
@@ -355,72 +434,38 @@ async function insertTextAtCursor(text) {
     end if
   `;
   
-  // Alternative Methode: Text in die Zwischenablage kopieren und dann mit Cmd+V einfügen
-  const clipboardScript = `
-    set theText to "${escapedText}"
-    set the clipboard to theText
-    
-    on isRunning(appName)
-      tell application "System Events" to (name of processes) contains appName
-    end isRunning
-    
-    set targetApp to "${lastActiveApp}"
-    
-    if isRunning(targetApp) then
-      tell application targetApp
-        activate
-      end tell
-      
-      delay 0.5
-      
-      try
-        tell application "System Events"
-          keystroke "v" using {command down}
-        end tell
-        return "Erfolgreich: Text wurde über die Zwischenablage eingefügt."
-      on error errMsg
-        return "Fehler beim Einfügen aus Zwischenablage: " & errMsg
-      end try
-    else
-      return "Fehler: Anwendung " & targetApp & " ist nicht geöffnet."
-    end if
-  `;
-  
-  // Versuche erst die direkte Eingabe, dann die Clipboard-Methode
   return new Promise((resolve, reject) => {
-    console.log('Versuche direkte Texteingabe mit AppleScript...');
-    
     exec(`osascript -e '${script}'`, (error, stdout, stderr) => {
       if (error || stderr || stdout.includes('Fehler')) {
-        console.log('Direkte Texteingabe fehlgeschlagen, versuche Zwischenablage-Methode...');
-        console.log('AppleScript-Output:', stdout);
-        console.error('AppleScript-Fehler:', error || stderr);
+        // Bei Fehler: Fallback zu TextEdit
+        const textEditFallbackScript = `
+          tell application "TextEdit"
+            activate
+            make new document
+            delay 0.5
+            set the text of the front document to "${escapedText}"
+          end tell
+        `;
         
-        // Zweiter Versuch über die Zwischenablage
-        exec(`osascript -e '${clipboardScript}'`, (clipError, clipStdout, clipStderr) => {
-          if (clipError || clipStderr || clipStdout.includes('Fehler')) {
-            console.error('Auch Zwischenablage-Methode fehlgeschlagen:', clipStdout);
-            console.error('Zwischenablage-Fehler:', clipError || clipStderr);
+        exec(`osascript -e '${textEditFallbackScript}'`, (teError, teStdout, teStderr) => {
+          if (teError || teStderr) {
+            console.error('TextEdit-Fallback fehlgeschlagen:', teError || teStderr);
             
-            // Benachrichtige den Benutzer über das UI
             if (overlayWindow && !overlayWindow.isDestroyed()) {
               overlayWindow.webContents.send('transcription-error', { 
-                message: 'Text konnte nicht eingefügt werden. Überprüfe die Berechtigungen für Automatisierungen in den Systemeinstellungen.' 
+                message: 'Text konnte nicht eingefügt werden. Versuche, die App-Berechtigungen zu überprüfen.' 
               });
             }
             
-            reject(new Error(`Texteingabe fehlgeschlagen: ${clipError?.message || clipStderr || clipStdout}`));
-            return;
+            reject(new Error(`Texteingabe-Methoden fehlgeschlagen`));
+          } else {
+            if (overlayWindow && !overlayWindow.isDestroyed()) {
+              overlayWindow.webContents.send('text-inserted', { usedFallback: true });
+            }
+            resolve();
           }
-          
-          console.log('Text über Zwischenablage erfolgreich eingefügt');
-          if (overlayWindow && !overlayWindow.isDestroyed()) {
-            overlayWindow.webContents.send('text-inserted');
-          }
-          resolve();
         });
       } else {
-        console.log('Text direkt erfolgreich eingefügt');
         if (overlayWindow && !overlayWindow.isDestroyed()) {
           overlayWindow.webContents.send('text-inserted');
         }
@@ -521,6 +566,18 @@ ipcMain.handle('toggle-recording', async () => {
     await startRecording();
     return { recording: true };
   }
+});
+
+// Handler zum Schließen des Overlays
+ipcMain.handle('close-overlay', () => {
+  if (overlayWindow && !overlayWindow.isDestroyed()) {
+    if (recording) {
+      stopRecording();
+    } else {
+      overlayWindow.hide();
+    }
+  }
+  return { success: true };
 });
 
 // App-Events

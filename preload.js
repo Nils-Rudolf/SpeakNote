@@ -11,6 +11,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Aufnahme-Steuerung
   toggleRecording: () => ipcRenderer.invoke('toggle-recording'),
   
+  // Overlay schließen
+  closeOverlay: () => ipcRenderer.invoke('close-overlay'),
+  
   // Event-Listener
   onSettingsLoaded: (callback) => {
     ipcRenderer.on('settings-loaded', (_, data) => callback(data));
@@ -32,5 +35,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   onTranscriptionError: (callback) => {
     ipcRenderer.on('transcription-error', (_, data) => callback(data));
+  },
+  onTextInserted: (callback) => {
+    ipcRenderer.on('text-inserted', (_, data) => callback(data || {}));
   }
 });

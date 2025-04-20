@@ -4,7 +4,7 @@ TransBuddy is a macOS application that enables automatic speech-to-text transcri
 
 ## Features
 
-- **Global Hotkey:** Cmd+5 starts/stops recording, even when the app is not in the foreground
+- **Global Hotkey:** F5 starts/stops recording
 - **Floating Overlay:** Displays recording status with audio visualization
 - **API Integration:** Supports ElevenLabs and OpenAI for speech recognition
 - **Settings:** Configure API key and select audio input device
@@ -12,7 +12,6 @@ TransBuddy is a macOS application that enables automatic speech-to-text transcri
 
 ## Requirements
 
-- macOS (developed and tested on macOS)
 - Node.js and npm
 - [Sox](http://sox.sourceforge.net/) for audio recording
 
@@ -33,10 +32,10 @@ brew install sox
 
 npm start
 
-2. Access settings via the tray icon in the menu bar
+2. Access settings via menu bar icon
 3. Configure API key and audio input device
-4. Press Cmd+5 to start recording
-5. Press Cmd+5 again to stop and transcribe the recording
+4. Press F5 to start recording
+5. Press F5 again to stop and transcribe the recording
 
 ## Build App
 
@@ -53,5 +52,5 @@ The compiled app will be located in the `dist` folder.
 
 ## Notes
 
-- The Cmd+5 shortcut is globally overridden, so the default macOS dictation function on Cmd+5 will be unavailable
+- The F5 shortcut is globally overridden, so the default macOS dictation function on F5 will be unavailable
 - The app uses AppleScript to insert text at the cursor position, which may require Accessibility permissions
