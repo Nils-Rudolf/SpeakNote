@@ -90,7 +90,7 @@ function createOverlayWindow() {
     frame: false,
     transparent: true,
     alwaysOnTop: true,
-    focusable: false, // Auf false setzen, da wir die ESC-Taste nicht mehr benötigen
+    focusable: true, // Auf true gesetzt, damit Tastatur-Events (insbesondere ESC) funktionieren
     skipTaskbar: true,
     show: false, // Initial versteckt
     webPreferences: {

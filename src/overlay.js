@@ -405,7 +405,9 @@ closeWindowButton.addEventListener('click', () => {
 
 // ESC-Taste zum Schließen des Fensters
 document.addEventListener('keydown', (event) => {
+  console.log('Taste gedrückt:', event.key); // Debug-Log hinzugefügt
   if (event.key === 'Escape') {
+    console.log('ESC wurde gedrückt! Versuche Fenster zu schließen...'); // Debug-Log
     // Aufnahme stoppen, falls aktiv
     if (recording) {
       window.electronAPI.cancelRecording().then(() => {
