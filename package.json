@@ -1,0 +1,40 @@
+{
+  "name": "transbuddy",
+  "version": "1.0.0",
+  "description": "Speech-to-Text Transkription mit globalem Shortcut für macOS",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^29.0.0",
+    "electron-builder": "^24.8.0"
+  },
+  "dependencies": {
+    "electron-store": "^8.1.0",
+    "node-fetch": "^2.7.0",
+    "form-data": "^4.0.0"
+  },
+  "build": {
+    "appId": "com.transbuddy.app",
+    "productName": "TransBuddy",
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": "dmg",
+      "icon": "assets/transbuddy_logo.png",
+      "darkModeSupport": true,
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "extendInfo": {
+        "LSUIElement": true,
+        "NSMicrophoneUsageDescription": "TransBuddy benötigt Zugriff auf das Mikrofon, um Sprachaufnahmen zu transkribieren"
+      }
+    }
+  }
+}

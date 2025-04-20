@@ -1,0 +1,163 @@
+:root {
+  --primary-color: #4a90e2;
+  --background-color: #f5f5f7;
+  --text-color: #333;
+  --border-color: #ddd;
+  --success-color: #4CAF50;
+  --error-color: #f44336;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  background-color: var(--background-color);
+  color: var(--text-color);
+  line-height: 1.6;
+  padding: 20px;
+}
+
+.container {
+  max-width: 500px;
+  margin: 0 auto;
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  padding: 20px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 15px;
+}
+
+.logo {
+  width: 40px;
+  height: 40px;
+  margin-right: 15px;
+}
+
+h1 {
+  font-size: 20px;
+  font-weight: 500;
+}
+
+h2 {
+  font-size: 16px;
+  font-weight: 500;
+  margin-bottom: 10px;
+}
+
+.settings-group {
+  margin-bottom: 20px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.form-group {
+  margin-bottom: 12px;
+}
+
+label {
+  display: block;
+  margin-bottom: 5px;
+  font-weight: 500;
+}
+
+input, select {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 5px;
+  font-size: 14px;
+}
+
+.form-group:has(#apiKey) {
+  display: flex;
+  gap: 10px;
+}
+
+.form-group:has(#apiKey) input {
+  flex: 1;
+}
+
+.form-group:has(#audioDevice) {
+  display: flex;
+  gap: 10px;
+}
+
+.form-group:has(#audioDevice) select {
+  flex: 1;
+}
+
+button {
+  cursor: pointer;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 5px;
+  font-size: 14px;
+  transition: background-color 0.3s;
+}
+
+.btn-primary {
+  background-color: var(--primary-color);
+  color: white;
+  padding: 10px 15px;
+}
+
+.btn-primary:hover {
+  background-color: #3a80d2;
+}
+
+.btn-small {
+  background-color: #e0e0e0;
+  color: #333;
+}
+
+.btn-small:hover {
+  background-color: #d0d0d0;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 20px;
+}
+
+.info {
+  font-size: 14px;
+  color: #666;
+  background-color: #f9f9f9;
+  border-left: 3px solid var(--primary-color);
+  padding: 10px;
+  border-radius: 0 5px 5px 0;
+}
+
+.status {
+  margin-top: 15px;
+  padding: 10px;
+  border-radius: 5px;
+  font-size: 14px;
+  display: none;
+}
+
+.status.success {
+  display: block;
+  background-color: rgba(76, 175, 80, 0.1);
+  color: var(--success-color);
+  border: 1px solid rgba(76, 175, 80, 0.3);
+}
+
+.status.error {
+  display: block;
+  background-color: rgba(244, 67, 54, 0.1);
+  color: var(--error-color);
+  border: 1px solid rgba(244, 67, 54, 0.3);
+}

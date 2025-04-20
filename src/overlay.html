@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TransBuddy Aufnahme</title>
+  <link rel="stylesheet" href="overlay.css">
+</head>
+<body>
+  <div class="overlay-container">
+    <div class="controls-row">
+      <button id="closeButton" class="control-button cancel-button">×</button>
+      <div class="waveform-container">
+        <canvas id="audioVisualizer"></canvas>
+      </div>
+      <div class="timer">
+        <span id="timer">0:14</span>
+      </div>
+      <button id="toggleRecording" class="control-button confirm-button">
+        <span class="check-icon">✓</span>
+      </button>
+    </div>
+    
+    <div id="statusText" class="status-text">Stelle irgendeine Frage</div>
+    <div id="errorMessage" class="error-message"></div>
+  </div>
+  
+  <script src="overlay.js"></script>
+</body>
+</html>

@@ -1,32 +1,57 @@
 # TransBuddy
 
-# macOS Productivity Voice App (Electron + 11Labs + OpenAI)
+TransBuddy is a macOS application that enables automatic speech-to-text transcription using a global hotkey. The app runs in the background, is accessible via the menu bar, and helps you quickly convert spoken language into text inserted at the current cursor position.
 
-A minimalist voice capture utility for macOS that allows you to record speech globally using the F5 key, transcribe it via the 11Labs Speech-to-Text API, and insert the result directly into the current cursor position — regardless of the active application.
+## Features
 
----
+- **Global Hotkey:** Cmd+5 starts/stops recording, even when the app is not in the foreground
+- **Floating Overlay:** Displays recording status with audio visualization
+- **API Integration:** Supports ElevenLabs and OpenAI for speech recognition
+- **Settings:** Configure API key and select audio input device
+- **Direct Insertion:** Transcribed text is automatically inserted at the current cursor position
 
-## Technology Stack
+## Requirements
 
-| Functionality      | Tool/Library                      |
-|--------------------|-----------------------------------|
-| Framework          | Electron                          |
-| Global Hotkey      | iohook, electron-localshortcut    |
-| Audio Capture      | node-record-lpcm16, mic           |
-| STT Integration    | 11Labs Speech-to-Text API         |
-| UI                 | HTML, CSS, JavaScript             |
-| Text Insertion     | robotjs, nut.js                   |
-| Config Management  | config.json                       |
+- macOS (developed and tested on macOS)
+- Node.js and npm
+- [Sox](http://sox.sourceforge.net/) for audio recording
 
----
+## Installation
 
-## Project Structure
+1. Clone or download the repository
+2. Install dependencies:
 
-my-macOS-voice-app/
-├── main.js             # Electron main process
-├── preload.js          # Secure bridge to renderer
-├── renderer/           # HTML/CSS/JS UI files
-├── config.json         # Audio device & API key settings
-├── package.json        # Project metadata and dependencies
-├── assets/             # Icons, audio assets, etc.
-└── README.md           # This documentation
+npm install
+
+3. Install Sox (if not already installed):
+
+brew install sox
+
+## Usage
+
+1. Start the application:
+
+npm start
+
+2. Access settings via the tray icon in the menu bar
+3. Configure API key and audio input device
+4. Press Cmd+5 to start recording
+5. Press Cmd+5 again to stop and transcribe the recording
+
+## Build App
+
+To build a standalone app:
+
+npm run build
+
+The compiled app will be located in the `dist` folder.
+
+## Get an API Key
+
+- **ElevenLabs:** Sign up at [ElevenLabs](https://elevenlabs.io/) to get your API key
+- **OpenAI:** Sign up at [OpenAI](https://platform.openai.com/signup) and generate an API key
+
+## Notes
+
+- The Cmd+5 shortcut is globally overridden, so the default macOS dictation function on Cmd+5 will be unavailable
+- The app uses AppleScript to insert text at the cursor position, which may require Accessibility permissions

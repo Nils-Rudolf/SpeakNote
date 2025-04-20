@@ -1,0 +1,55 @@
+# Dependencies
+node_modules/
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+package-lock.json
+yarn.lock
+
+# Build outputs
+dist/
+build/
+out/
+.webpack/
+*.app/
+*.dmg
+
+# macOS system files
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+
+# Environment and config
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+config.json
+
+# Editor directories and files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Debug logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Audio files (potentially created during development)
+*.wav
+*.mp3
+*.aac
+temp_recording_*
+
+# Certificates and keys
+*.pem
+*.key
+*.cert
