@@ -1,4 +1,4 @@
-// DOM-Elemente
+// DOM Elements
 const apiTypeSelect = document.getElementById('apiType');
 const apiKeyInput = document.getElementById('apiKey');
 const showApiKeyBtn = document.getElementById('showApiKey');
@@ -7,21 +7,21 @@ const refreshDevicesBtn = document.getElementById('refreshDevices');
 const saveSettingsBtn = document.getElementById('saveSettings');
 const statusMessage = document.getElementById('statusMessage');
 
-// Audio-Geräte laden
+// Load audio devices
 async function loadAudioDevices() {
   try {
     const devices = await window.electronAPI.getAudioDevices();
     
-    // Dropdown-Liste leeren und neu befüllen
+    // Clear and refill dropdown list
     audioDeviceSelect.innerHTML = '';
     
-    // Standardoption hinzufügen
+    // Add default option
     const defaultOption = document.createElement('option');
     defaultOption.value = '';
-    defaultOption.textContent = 'Standard-Mikrofon';
+    defaultOption.textContent = 'Default Microphone';
     audioDeviceSelect.appendChild(defaultOption);
     
-    // Verfügbare Geräte hinzufügen
+    // Add available devices
     devices.forEach(device => {
       const option = document.createElement('option');
       option.value = device;
@@ -29,12 +29,12 @@ async function loadAudioDevices() {
       audioDeviceSelect.appendChild(option);
     });
   } catch (error) {
-    showStatus('Fehler beim Laden der Audio-Geräte', 'error');
-    console.error('Fehler beim Laden der Audio-Geräte:', error);
+    showStatus('Error loading audio devices', 'error');
+    console.error('Error loading audio devices:', error);
   }
 }
 
-// Einstellungen speichern
+// Save settings
 async function saveSettings() {
   const settings = {
     apiKey: apiKeyInput.value,
@@ -46,50 +46,50 @@ async function saveSettings() {
     const result = await window.electronAPI.saveSettings(settings);
     
     if (result.success) {
-      showStatus('Einstellungen erfolgreich gespeichert', 'success');
+      showStatus('Settings successfully saved', 'success');
     } else {
-      showStatus('Fehler beim Speichern der Einstellungen', 'error');
+      showStatus('Error saving settings', 'error');
     }
   } catch (error) {
-    showStatus('Fehler beim Speichern der Einstellungen', 'error');
-    console.error('Fehler beim Speichern:', error);
+    showStatus('Error saving settings', 'error');
+    console.error('Error saving:', error);
   }
 }
 
-// Statusmeldung anzeigen
+// Show status message
 function showStatus(message, type) {
   statusMessage.textContent = message;
   statusMessage.className = 'status';
   statusMessage.classList.add(type);
   
-  // Nach 3 Sekunden ausblenden
+  // Hide after 3 seconds
   setTimeout(() => {
     statusMessage.className = 'status';
   }, 3000);
 }
 
-// API-Schlüssel ein-/ausblenden
+// Toggle API key visibility
 function toggleApiKeyVisibility() {
   if (apiKeyInput.type === 'password') {
     apiKeyInput.type = 'text';
-    showApiKeyBtn.textContent = 'Verbergen';
+    showApiKeyBtn.textContent = 'Hide';
   } else {
     apiKeyInput.type = 'password';
-    showApiKeyBtn.textContent = 'Anzeigen';
+    showApiKeyBtn.textContent = 'Show';
   }
 }
 
-// Event-Listener
+// Event listeners
 window.electronAPI.onSettingsLoaded((settings) => {
   const { apiKey, apiType, audioDevice } = settings;
   
   apiKeyInput.value = apiKey || '';
   apiTypeSelect.value = apiType || 'elevenlabs';
   
-  // Audio-Geräte laden und dann das gespeicherte auswählen
+  // Load audio devices and then select the saved one
   loadAudioDevices().then(() => {
     if (audioDevice) {
-      // Nach dem Laden der Geräte das gespeicherte auswählen
+      // Select the saved device after loading
       for (let i = 0; i < audioDeviceSelect.options.length; i++) {
         if (audioDeviceSelect.options[i].value === audioDevice) {
           audioDeviceSelect.selectedIndex = i;
@@ -104,5 +104,5 @@ refreshDevicesBtn.addEventListener('click', loadAudioDevices);
 showApiKeyBtn.addEventListener('click', toggleApiKeyVisibility);
 saveSettingsBtn.addEventListener('click', saveSettings);
 
-// Initial Audio-Geräte laden
+// Initially load audio devices
 loadAudioDevices();

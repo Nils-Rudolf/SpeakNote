@@ -1,52 +1,50 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>TransBuddy Einstellungen</title>
+  <title>TransBuddy Settings</title>
   <link rel="stylesheet" href="settings.css">
 </head>
 <body>
   <div class="container">
-    <div class="header">
-      <img src="../assets/transbuddy_logo.png" alt="TransBuddy Logo" class="logo">
-      <h1>TransBuddy Einstellungen</h1>
-    </div>
+    
     
     <div class="settings-group">
-      <h2>API-Konfiguration</h2>
+      <h2>API Configuration</h2>
       <div class="form-group">
-        <label for="apiType">API-Anbieter:</label>
+        <label for="apiType">API Provider:</label>
         <select id="apiType">
-          <option value="elevenlabs">ElevenLabs Speech-to-Text</option>
+          <option value="elevenlabs">ElevenLabs</option>
           <option value="openai">OpenAI Whisper</option>
+          <option value="openai-gpt4o">OpenAI GPT-4o Transcribe</option>
         </select>
       </div>
       <div class="form-group">
-        <label for="apiKey">API-Schlüssel:</label>
-        <input type="password" id="apiKey" placeholder="Dein API-Schlüssel">
-        <button id="showApiKey" class="btn-small">Anzeigen</button>
+        <label for="apiKey">API Key:</label>
+        <input type="password" id="apiKey" placeholder="Your API key">
+        <button id="showApiKey" class="btn-small">Show</button>
       </div>
     </div>
     
     <div class="settings-group">
-      <h2>Audio-Einstellungen</h2>
+      <h2>Audio Settings</h2>
       <div class="form-group">
-        <label for="audioDevice">Audio-Eingabegerät:</label>
+        <label for="audioDevice">Audio Input Device:</label>
         <select id="audioDevice">
-          <option value="">Wird geladen...</option>
+          <option value="">Loading...</option>
         </select>
-        <button id="refreshDevices" class="btn-small">Aktualisieren</button>
+        <button id="refreshDevices" class="btn-small">Refresh</button>
       </div>
     </div>
     
     <div class="settings-group">
-      <h2>Tastenkombination</h2>
-      <p class="info">TransBuddy verwendet die <strong>F5-Taste</strong> als globalen Shortcut zum Starten und Stoppen der Aufnahme.</p>
+      <h2>Keyboard Shortcut</h2>
+      <p class="info">TransBuddy uses the <strong>F5 key</strong> as a global shortcut to start and stop recording.</p>
     </div>
     
     <div class="actions">
-      <button id="saveSettings" class="btn-primary">Speichern</button>
+      <button id="saveSettings" class="btn-primary">Save</button>
     </div>
     
     <div id="statusMessage" class="status"></div>

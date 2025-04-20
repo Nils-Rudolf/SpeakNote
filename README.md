@@ -8,7 +8,7 @@ TransBuddy is a macOS application that enables automatic speech-to-text transcri
 
 - **Global Hotkey:** F5 starts/stops recording
 - **Floating Overlay:** Displays recording status with audio visualization
-- **API Integration:** Supports ElevenLabs and OpenAI for speech recognition
+- **API Integration:** Supports ElevenLabs, OpenAI Whisper, and OpenAI GPT-4o Transcribe for speech recognition
 - **Settings:** Configure API key and select audio input device
 - **Direct Insertion:** Transcribed text is automatically inserted at the current cursor position
 
