@@ -14,6 +14,11 @@ let recordingStartTime = 0;
 let timerInterval = null;
 let animationFrame = null;
 
+// Neue Flags für besseres State-Management
+let isUIFrozen = false; // Erkennt, ob die UI eingefroren ist
+let isRecoveryMode = false; // Flag für den Wiederherstellungsmodus
+let lastCancelTime = 0; // Zeitpunkt des letzten Abbruchs
+
 // Audio-Analyse-Variablen
 let audioContext = null;
 let analyser = null;
@@ -111,44 +116,86 @@ async function setupAudioVisualization() {
   }
 }
 
-// Audio-Analyse stoppen
-async function stopAudioAnalysis() {
-  if (!audioContext) return;
-  
-  cancelAnimationFrame(animationFrame);
-  animationFrame = null;
-  
-  if (microphone) {
-    microphone.disconnect();
-    microphone = null;
+// Audio-Analyse stoppen - mit zusätzlichem Force-Option für Notfall-Reset
+async function stopAudioAnalysis(force = false) {
+  // Wenn force aktiviert ist, setzen wir alle Flags zurück
+  if (force) {
+    isUIFrozen = false;
+    isRecoveryMode = false;
   }
   
-  // Stoppe alle Tracks im MediaStream
-  if (audioStream) {
-    const tracks = audioStream.getTracks();
-    tracks.forEach(track => {
-      track.stop();
-    });
-    audioStream = null;
-  }
-  
-  if (audioContext.state !== 'closed') {
-    try {
-      await audioContext.close();
-    } catch (error) {
-      console.error('Fehler beim Schließen des Audio-Kontexts:', error);
+  try {
+    // Sofort die Animation beenden
+    if (animationFrame) {
+      cancelAnimationFrame(animationFrame);
+      animationFrame = null;
+    }
+    
+    // Sofort alle Timer beenden
+    stopVisualizationTimer();
+    
+    if (microphone) {
+      try {
+        microphone.disconnect();
+      } catch (e) {
+        console.log('Fehler beim Trennen des Mikrofons:', e);
+      }
+      microphone = null;
+    }
+    
+    // Sofort alle Tracks im MediaStream beenden
+    if (audioStream) {
+      try {
+        const tracks = audioStream.getTracks();
+        for (const track of tracks) {
+          track.stop();
+        }
+      } catch (e) {
+        console.log('Fehler beim Stoppen der Audio-Tracks:', e);
+      }
+      audioStream = null;
+    }
+    
+    // Audio-Kontext mit höherer Priorität schließen
+    if (audioContext) {
+      try {
+        // Im Force-Modus, schließen wir ohne auf Promises zu warten
+        if (force) {
+          try {
+            audioContext.close();
+          } catch (e) {}
+          audioContext = null;
+        } else {
+          // Normale Methode mit Promise
+          await audioContext.close().catch(e => console.error('Audio-Kontext-Fehler:', e));
+          audioContext = null;
+        }
+      } catch (error) {
+        console.error('Fehler beim Schließen des Audio-Kontexts:', error);
+        audioContext = null;
+      }
+    }
+    
+    analyser = null;
+    dataArray = null;
+    
+    // Sofort die Visualisierung zurücksetzen
+    visualizationHistory.length = 0;
+    drawStaticWaveform();
+  } catch (e) {
+    console.error('Fehler beim Stoppen der Audio-Analyse:', e);
+    // Bei Fehler im Force-Modus alle Referenzen hart zurücksetzen
+    if (force) {
+      microphone = null;
+      audioStream = null;
+      audioContext = null;
+      analyser = null;
+      dataArray = null;
+      animationFrame = null;
+      visualizationHistory.length = 0;
+      drawStaticWaveform();
     }
   }
-  
-  audioContext = null;
-  analyser = null;
-  dataArray = null;
-  
-  // Statisches Muster anzeigen
-  drawStaticWaveform();
-  
-  // Stoppe die regelmäßige Aktualisierung
-  stopVisualizationTimer();
 }
 
 // Animationsfunktion für die Mikrofon-Visualisierung
@@ -277,22 +324,49 @@ function updateTimer() {
 
 // Aufnahme starten
 async function startRecording() {
+  // Überprüfen, ob wir uns gerade im Recovery-Modus befinden oder ob Zeit seit letztem Abbruch zu kurz ist
+  const timeSinceLastCancel = Date.now() - lastCancelTime;
+  const needsCooldown = timeSinceLastCancel < 800;
+  
+  if (isRecoveryMode || needsCooldown) {
+    console.log('Starte nicht sofort nach Abbruch - Cool-down aktiv');
+    // Kurze Verzögerung einfügen, damit die Audio-Ressourcen freigegeben werden können
+    await new Promise(resolve => setTimeout(resolve, 800));
+    
+    // Vor dem Neustart sicherstellen, dass alle Audio-Ressourcen wirklich freigegeben wurden
+    await stopAudioAnalysis(true);
+  }
+  
+  // Jetzt erst alle Status-Flags setzen
   recording = true;
+  isUIFrozen = false;
   recordingStartTime = Date.now();
   
   // UI aktualisieren
   statusText.textContent = 'Recording';
   toggleRecordingButton.classList.add('recording');
   
-  // Audio-Visualisierung starten
-  await setupAudioVisualization();
-  
-  // Timer starten
-  timerInterval = setInterval(updateTimer, 1000);
-  updateTimer(); // Sofort aktualisieren
-  
-  // Fehler zurücksetzen
-  hideError();
+  try {
+    // Audio-Visualisierung starten - mit Fehlerbehandlung
+    const visualizationSuccess = await setupAudioVisualization();
+    if (!visualizationSuccess) {
+      console.error('Audio-Visualisierung konnte nicht initialisiert werden');
+      // Trotzdem weitermachen, aber Flag setzen, dass wir Probleme haben könnten
+      isUIFrozen = true;
+    }
+    
+    // Timer starten
+    if (timerInterval) clearInterval(timerInterval);
+    timerInterval = setInterval(updateTimer, 1000);
+    updateTimer(); // Sofort aktualisieren
+    
+    // Fehler zurücksetzen
+    hideError();
+  } catch (error) {
+    console.error('Fehler beim Starten der Aufnahme (UI):', error);
+    // Zur Sicherheit in einen "gefrorenen" Zustand übergehen, damit der Notfall-Reset funktioniert
+    isUIFrozen = true;
+  }
 }
 
 // Aufnahme stoppen
@@ -366,56 +440,129 @@ function hideError() {
 // Event-Listener
 toggleRecordingButton.addEventListener('click', toggleRecording);
 
-// Abbrechen-Button stoppt die Aufnahme, aber schließt das Fenster nicht
+// Abbrechen-Button stoppt die Aufnahme, aber schließt das Fenster NICHT
 closeButton.addEventListener('click', async () => {
-  if (recording) {
-    try {
-      // Vor dem Senden des Cancel-Befehls direkt UI aktualisieren
-      statusText.textContent = 'Start Recording';
-      
-      // Timer sofort stoppen
+  console.log('[DEBUG] Abbrechen-Button geklickt');
+  
+  try {
+    // Status sofort ändern und UI aktualisieren
+    recording = false;
+    statusText.textContent = 'Abgebrochen';
+    console.log('[DEBUG] Status auf "Abgebrochen" gesetzt');
+    
+    // Sofort Timer und Visualisierung stoppen
+    if (timerInterval) {
       clearInterval(timerInterval);
       timerInterval = null;
-      
-      // Aufnahme-Status sofort zurücksetzen
-      recording = false;
-      toggleRecordingButton.classList.remove('recording');
-      
-      // Audio-Analyse sofort stoppen
-      await stopAudioAnalysis();
-      
-      // Über IPC an den Hauptprozess senden, dass Aufnahme abgebrochen wurde
-      await window.electronAPI.cancelRecording();
-      
-      // Timer sofort zurücksetzen (nicht warten)
-      timer.textContent = '0:00';
-      
-      // Nach kurzer Zeit den Status zurücksetzen
-      setTimeout(() => {
-        resetUI();
-      }, 2000);
-    } catch (error) {
-      console.error('Fehler beim Abbrechen der Aufnahme:', error);
-      showError('Failed to cancel recording');
+      console.log('[DEBUG] Timer gestoppt');
     }
-  } else {
-    // Wenn keine Aufnahme läuft, sofort in den Ausgangszustand zurückkehren
+    
+    // Alle Timer und Animationen stoppen
+    stopVisualizationTimer();
+    if (animationFrame) {
+      cancelAnimationFrame(animationFrame);
+      animationFrame = null;
+      console.log('[DEBUG] Animationen gestoppt');
+    }
+    
+    // Audio-Analyse komplett beenden
+    if (audioStream) {
+      try {
+        const tracks = audioStream.getTracks();
+        tracks.forEach(track => track.stop());
+        console.log('[DEBUG] Audio-Tracks gestoppt: ' + tracks.length);
+      } catch (e) {
+        console.error('[DEBUG] Fehler beim Stoppen der Audio-Tracks:', e);
+      }
+      audioStream = null;
+    }
+    
+    if (audioContext) {
+      try {
+        await audioContext.close();
+        console.log('[DEBUG] AudioContext geschlossen');
+      } catch (e) {
+        console.error('[DEBUG] Fehler beim Schließen des AudioContext:', e);
+      }
+      audioContext = null;
+    }
+    
+    microphone = null;
+    analyser = null;
+    
+    // UI zurücksetzen
+    drawStaticWaveform();
+    toggleRecordingButton.classList.remove('recording');
+    timer.textContent = '0:00';
+    
+    // Den Abbruch an den Hauptprozess senden
+    console.log('[DEBUG] Sende cancelRecording an Hauptprozess');
+    const result = await window.electronAPI.cancelRecording();
+    console.log('[DEBUG] Ergebnis von cancelRecording:', result);
+    
+    // Nach kurzer Zeit UI zurücksetzen, aber Fenster NICHT schließen
+    setTimeout(() => {
+      resetUI();
+      console.log('[DEBUG] UI zurückgesetzt nach Abbruch');
+    }, 1000);
+  } catch (error) {
+    console.error('[DEBUG] Fehler beim Abbrechen:', error);
+    // Trotz Fehler UI zurücksetzen
     resetUI();
   }
 });
 
 // Apple-Style X-Button schließt das Fenster
-closeWindowButton.addEventListener('click', () => {
+closeWindowButton.addEventListener('click', async () => {
   // Aufnahme stoppen, falls aktiv
   if (recording) {
-    window.electronAPI.cancelRecording().then(() => {
-      closeWindow();
-    }).catch(error => {
-      console.error('Fehler beim Beenden der Aufnahme:', error);
-      closeWindow();
-    });
+    try {
+      // UI sofort aktualisieren
+      recording = false;
+      statusText.textContent = 'Beendet';
+      
+      // Alle Audio-Ressourcen sofort freigeben
+      if (timerInterval) {
+        clearInterval(timerInterval);
+        timerInterval = null;
+      }
+      
+      stopVisualizationTimer();
+      if (animationFrame) {
+        cancelAnimationFrame(animationFrame);
+        animationFrame = null;
+      }
+      
+      // Audio-Stream stoppen
+      if (audioStream) {
+        const tracks = audioStream.getTracks();
+        tracks.forEach(track => track.stop());
+        audioStream = null;
+      }
+      
+      if (audioContext) {
+        try {
+          await audioContext.close();
+        } catch (e) {}
+        audioContext = null;
+      }
+      
+      microphone = null;
+      analyser = null;
+      
+      // Erst jetzt den Hauptprozess benachrichtigen
+      await window.electronAPI.cancelRecording();
+      
+      // Direkt schließen
+      window.electronAPI.closeOverlay();
+    } catch (error) {
+      console.error('Fehler beim Schließen mit X:', error);
+      // Im Fehlerfall trotzdem schließen
+      window.electronAPI.closeOverlay();
+    }
   } else {
-    closeWindow();
+    // Wenn keine Aufnahme läuft, einfach schließen
+    window.electronAPI.closeOverlay();
   }
 });
 
@@ -448,25 +595,84 @@ window.electronAPI.onRecordingStopped(() => {
 });
 
 window.electronAPI.onCancelRecordingDirect(() => {
-  // Direkter Abbruch der Aufnahme ohne Übergang zu "Transcribing"
-  recording = false;
-  statusText.textContent = 'Start Recording';
+  console.log('[DEBUG] cancel-recording-direct Event empfangen');
   
-  // Timer und Aufnahme sofort stoppen
-  clearInterval(timerInterval);
-  timerInterval = null;
-  toggleRecordingButton.classList.remove('recording');
-  
-  // Audio-Analyse stoppen (ohne await, da wir keinen Status-Wechsel wollen)
-  stopAudioAnalysis();
-  
-  // Timer zurücksetzen
-  timer.textContent = '0:00';
-  
-  // Nach kurzer Verzögerung UI zurücksetzen
-  setTimeout(() => {
+  // Sofortige Maßnahmen zur Fehlerbehebung
+  try {
+    // Status sofort hart zurücksetzen
+    recording = false;
+    
+    // Timer hart stoppen
+    if (timerInterval) {
+      clearInterval(timerInterval);
+      timerInterval = null;
+      console.log('[DEBUG] Timer im cancel-direct gestoppt');
+    }
+    
+    // Animation sofort beenden
+    if (animationFrame) {
+      cancelAnimationFrame(animationFrame);
+      animationFrame = null;
+      console.log('[DEBUG] Animation im cancel-direct gestoppt');
+    }
+    
+    // Visualisierungstimer sofort stoppen
+    stopVisualizationTimer();
+    console.log('[DEBUG] Visualisierungstimer im cancel-direct gestoppt');
+    
+    // Audiostream direkt beenden
+    if (audioStream) {
+      const tracks = audioStream.getTracks();
+      tracks.forEach(track => {
+        try {
+          track.stop();
+          console.log('[DEBUG] Audiotrack im cancel-direct gestoppt');
+        } catch (e) {
+          console.error('[DEBUG] Fehler beim Stoppen des Audiotracks:', e);
+        }
+      });
+      audioStream = null;
+    }
+    
+    // Audio-Kontext direkt schließen, ohne auf Promise zu warten
+    if (audioContext) {
+      try {
+        audioContext.close();
+        console.log('[DEBUG] AudioContext im cancel-direct geschlossen');
+      } catch (e) {
+        console.error('[DEBUG] Fehler beim Schließen des AudioContext:', e);
+      }
+      audioContext = null;
+    }
+    
+    // Andere Audio-Referenzen löschen
+    microphone = null;
+    analyser = null;
+    dataArray = null;
+    
+    // Visualisierungsverlauf löschen
+    visualizationHistory.length = 0;
+    
+    // Statisches Muster neu zeichnen
+    drawStaticWaveform();
+    
+    // UI-Status aktualisieren
+    statusText.textContent = 'Start Recording';
+    toggleRecordingButton.classList.remove('recording');
+    timer.textContent = '0:00';
+    
+    console.log('[DEBUG] UI im cancel-direct vollständig zurückgesetzt');
+    
+    // Nach kurzer Verzögerung UI vollständig zurücksetzen
+    setTimeout(() => {
+      resetUI();
+      console.log('[DEBUG] resetUI nach cancel-direct aufgerufen');
+    }, 500);
+  } catch (error) {
+    console.error('[DEBUG] Fehler im cancel-direct Handler:', error);
+    // Trotz Fehler UI zurücksetzen
     resetUI();
-  }, 2000);
+  }
 });
 
 window.electronAPI.onTranscriptionStarted(() => {

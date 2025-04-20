@@ -253,18 +253,41 @@ async function captureActiveApplication() {
 
 // Aufnahme starten
 async function startRecording() {
+  console.log('[DEBUG] startRecording aufgerufen');
+  
   // Wenn bereits eine Aufnahme läuft, diese zuerst beenden
   if (recording) {
+    console.log('[DEBUG] Bereits laufende Aufnahme wird gestoppt');
     await stopRecording();
-    // Kurze Pause, um sicherzustellen, dass alle Ressourcen freigegeben sind
-    await new Promise(resolve => setTimeout(resolve, 500));
+    // Längere Pause, um sicherzustellen, dass alle Ressourcen freigegeben sind
+    await new Promise(resolve => setTimeout(resolve, 1000));
+  }
+  
+  // Prüfen, ob ein Abbruch kürzlich stattgefunden hat
+  const lastCancelTimeKey = 'lastCancelTime';
+  const lastCancelTime = global[lastCancelTimeKey] || 0;
+  const now = Date.now();
+  const timeSinceCancel = now - lastCancelTime;
+  
+  // Wenn Abbruch weniger als 1500ms her ist, warten wir
+  if (timeSinceCancel < 1500) {
+    console.log(`[DEBUG] Zu schnell nach Abbruch (${timeSinceCancel}ms), verzögere Start um ${1500-timeSinceCancel}ms`);
+    await new Promise(resolve => setTimeout(resolve, 1500 - timeSinceCancel));
+    console.log('[DEBUG] Verzögerung nach Abbruch abgeschlossen');
   }
   
   // Stellen wir sicher, dass kein sox-Prozess läuft
   if (process.platform === 'darwin') {
-    exec('killall sox 2>/dev/null || true', () => {
-      // Ignoriere Fehler, falls kein sox-Prozess läuft
-    });
+    try {
+      console.log('[DEBUG] Stelle sicher, dass keine Sox-Prozesse laufen');
+      await new Promise((resolve) => {
+        exec('killall sox 2>/dev/null || true', () => resolve());
+      });
+      // Kurze Pause für Audio-System-Stabilität
+      await new Promise(resolve => setTimeout(resolve, 300));
+    } catch (e) {
+      console.log('[DEBUG] Sox-Beendigung nicht kritisch:', e);
+    }
   }
   
   // Aktive Anwendung erfassen, bevor das Overlay geöffnet wird
@@ -291,19 +314,22 @@ async function startRecording() {
   
   const selectedDevice = store.get('audioDevice', '');
   recordingFilePath = path.join(app.getPath('temp'), `transbuddy_recording_${Date.now()}.wav`);
+  console.log('[DEBUG] Neue Aufnahme-Datei:', recordingFilePath);
   
   // Stellen wir sicher, dass keine alte Audiodatei existiert
   try {
     if (fs.existsSync(recordingFilePath)) {
       await unlinkAsync(recordingFilePath);
+      console.log('[DEBUG] Alte Aufnahmedatei gelöscht');
     }
   } catch (error) {
-    console.log('Alte Aufnahmedatei konnte nicht gelöscht werden:', error);
+    console.log('[DEBUG] Alte Aufnahmedatei konnte nicht gelöscht werden:', error);
     // Nicht kritisch, weitermachen
   }
   
   recording = true;
   recordingStartTime = Date.now(); // Aufnahmebeginn speichern für Mindestaufnahmezeit
+  console.log('[DEBUG] Aufnahme-Status auf true gesetzt, Start-Zeit:', recordingStartTime);
   
   // Audio-Aufnahme mit ausgewähltem Gerät starten
   let recordCmd;
@@ -315,10 +341,12 @@ async function startRecording() {
     recordCmd = `sox -d -r 44100 -c 1 "${recordingFilePath}"`;
   }
   
+  console.log('[DEBUG] Starte Aufnahme mit Befehl:', recordCmd);
+  
   try {
     recordingProcess = exec(recordCmd, (error) => {
       if (error && !error.killed) {
-        console.error('Fehler bei der Aufnahme:', error);
+        console.error('[DEBUG] Fehler bei der Aufnahme:', error);
         recording = false;
         if (overlayWindow && !overlayWindow.isDestroyed()) {
           overlayWindow.webContents.send('recording-error', { message: `Fehler bei der Aufnahme: ${error.message}` });
@@ -328,18 +356,20 @@ async function startRecording() {
     
     // UI aktualisieren
     if (overlayWindow && !overlayWindow.isDestroyed()) {
+      console.log('[DEBUG] Sende recording-started an Overlay');
       overlayWindow.webContents.send('recording-started');
       overlayWindow.show();
     } else {
       // Falls das Overlay-Fenster nicht existiert, neu erstellen
       createOverlayWindow();
       setTimeout(() => {
+        console.log('[DEBUG] Sende recording-started an neu erstelltes Overlay');
         overlayWindow.webContents.send('recording-started');
         overlayWindow.show();
-      }, 100);
+      }, 300);
     }
   } catch (error) {
-    console.error('Fehler beim Starten der Aufnahme:', error);
+    console.error('[DEBUG] Fehler beim Starten der Aufnahme:', error);
     recording = false;
     if (overlayWindow && !overlayWindow.isDestroyed()) {
       overlayWindow.webContents.send('recording-error', { message: `Fehler beim Starten der Aufnahme: ${error.message}` });
@@ -447,81 +477,111 @@ async function stopRecording() {
 
 // Explizit die Aufnahme abbrechen ohne Transkription
 async function cancelRecordingProcess() {
-  if (!recording) return { success: true };
+  console.log('[DEBUG] cancelRecordingProcess aufgerufen, Status recording:', recording);
   
-  console.log('Aufnahme wird explizit abgebrochen...');
+  if (!recording) {
+    console.log('[DEBUG] Keine Aufnahme läuft, nichts abzubrechen');
+    return { success: true };
+  }
+  
+  console.log('[DEBUG] Aufnahme wird explizit abgebrochen...');
   recording = false;
   
-  // Aufnahmeprozess schrittweise und sicherer beenden
-  if (recordingProcess) {
-    try {
-      // Zuerst mit SIGTERM versuchen (sanfter)
-      recordingProcess.kill('SIGTERM');
-      
-      // Warten, damit der Prozess eine Chance hat, sauber zu beenden
-      await new Promise(resolve => setTimeout(resolve, 300));
-      
-      // Überprüfen, ob der Prozess noch läuft und ggf. härter beenden
-      if (recordingProcess) {
-        try {
-          // SIGINT (Ctrl+C) senden
-          recordingProcess.kill('SIGINT');
-          
-          // Nochmals warten
-          await new Promise(resolve => setTimeout(resolve, 200));
-        } catch (e) {
-          console.log('SIGINT-Signal konnte nicht gesendet werden:', e);
-        }
-      }
-      
-      // Auf macOS: SoX-Prozesse eleganter beenden mit geordneten Befehlen
-      if (process.platform === 'darwin') {
-        // Verwende pkill mit -2 (SIGINT), was ein freundlicherer Befehl ist als -9 (SIGKILL)
-        try {
-          // Mehrere Befehle nacheinander, um sicherzustellen, dass alle SoX-Prozesse beendet werden
-          exec('pkill -2 -f sox', () => {});
-          await new Promise(resolve => setTimeout(resolve, 100));
-          exec('pkill -2 -f rec', () => {});
-          await new Promise(resolve => setTimeout(resolve, 100));
-          
-          // Nur als letzten Ausweg killall verwenden
-          exec('killall -2 sox 2>/dev/null || true', () => {});
-          await new Promise(resolve => setTimeout(resolve, 100));
-        } catch (e) {
-          console.error('Fehler beim sauberen Beenden der SoX-Prozesse:', e);
-        }
-      } else if (process.platform === 'win32') {
-        exec('taskkill /IM sox.exe', () => {}); // Zuerst ohne /F versuchen
-        await new Promise(resolve => setTimeout(resolve, 300));
-        exec('taskkill /F /IM sox.exe /T', () => {}); // Falls nötig mit /F (force)
-      } else {
-        exec('pkill -2 -f sox', () => {}); // SIGINT statt SIGKILL
-        await new Promise(resolve => setTimeout(resolve, 200));
-        exec('pkill -f sox', () => {});
-      }
-      
-      // Aufnahme-Callback benachrichtigen
-      recordingProcess = null;
-    } catch (error) {
-      console.error('Fehler beim Beenden des Aufnahmeprozesses:', error);
-    }
-  }
+  // Wichtig: Zeitstempel des Abbruchs speichern für Schutz vor zu schnellen Neustarts
+  const lastCancelTimeKey = 'lastCancelTime';
+  global[lastCancelTimeKey] = Date.now();
+  console.log(`[DEBUG] Letzter Abbruch-Zeitstempel gesetzt: ${global[lastCancelTimeKey]}`);
   
-  // Overlay-Fenster benachrichtigen - direkt mit "Cancelled" statt als recording-stopped
-  if (overlayWindow && !overlayWindow.isDestroyed()) {
-    overlayWindow.webContents.send('cancel-recording-direct');
-  }
-  
-  // Aufnahmedatei löschen, wenn vorhanden
+  // Sofortiges Beenden der Aufnahmeressourcen
   try {
-    if (recordingFilePath && fs.existsSync(recordingFilePath)) {
-      await unlinkAsync(recordingFilePath);
-      console.log('Temporäre Aufnahmedatei gelöscht.');
+    if (recordingProcess) {
+      try {
+        console.log('[DEBUG] Beende Aufnahmeprozess mit SIGKILL');
+        recordingProcess.kill('SIGKILL');
+      } catch (error) {
+        console.error('[DEBUG] Fehler beim Beenden des Aufnahmeprozesses:', error);
+      } finally {
+        recordingProcess = null;
+      }
+    }
+    
+    console.log('[DEBUG] Beende Audio-Prozesse');
+    
+    // Verbesserte, reihenfolgesensitive Methode zum Beenden von Audio-Prozessen
+    if (process.platform === 'darwin') {
+      // Erst versuchen wir es mit weniger aggressiven Methoden
+      try {
+        await new Promise((resolve) => {
+          exec('killall sox 2>/dev/null || true', () => resolve());
+        });
+        
+        // Kurz warten
+        await new Promise(resolve => setTimeout(resolve, 50));
+        
+        // Dann aggressiver werden, aber ohne Fehler auszugeben, wenn keine Prozesse gefunden werden
+        await new Promise((resolve) => {
+          exec('killall -9 sox 2>/dev/null || true', (error) => {
+            if (error) {
+              // Error ignorieren, da dies normal ist, wenn keine Prozesse laufen
+              console.log('[DEBUG] Sox-Prozesse wurden bereits beendet');
+            } else {
+              console.log('[DEBUG] Sox-Prozesse mit SIGKILL beendet');
+            }
+            resolve();
+          });
+        });
+        
+        // Direkte Methode für Audio-Schnittstellen-Reset ohne OS-Fehlermeldungen
+        console.log('[DEBUG] Audio-System-Reset wird durchgeführt');
+        await new Promise((resolve) => {
+          exec('osascript -e "set volume input volume 0" && sleep 0.2 && osascript -e "set volume input volume 100"', 
+            (error) => {
+              if (error) console.log('[DEBUG] Audio-Reset Warnung (nicht kritisch):', error.message);
+              resolve();
+            }
+          );
+        });
+      } catch (e) {
+        console.log('[DEBUG] Audio-Reset nicht-kritischer Fehler:', e);
+        // Fehler werden ignoriert, da sie die Hauptfunktion nicht blockieren sollen
+      }
+    } else if (process.platform === 'win32') {
+      // Windows-spezifischer Code
+      await new Promise((resolve) => {
+        exec('taskkill /F /IM sox.exe /T', () => resolve());
+      });
+    } else {
+      // Linux-spezifischer Code
+      await new Promise((resolve) => {
+        exec('pkill -9 -f sox || true', () => resolve());
+      });
     }
   } catch (error) {
-    console.error('Fehler beim Löschen der temporären Datei:', error);
+    console.error('[DEBUG] Allgemeiner Fehler beim Beenden des Audiosystems:', error);
   }
   
+  // Overlay-Fenster über den Cancel-Vorgang informieren, aber NICHT schließen
+  console.log('[DEBUG] Overlay über Abbruch informieren');
+  if (overlayWindow && !overlayWindow.isDestroyed()) {
+    try {
+      overlayWindow.webContents.send('cancel-recording-direct');
+    } catch (error) {
+      console.error('[DEBUG] Fehler beim Senden an Overlay:', error);
+    }
+  }
+  
+  // Aufnahmedatei löschen
+  if (recordingFilePath && fs.existsSync(recordingFilePath)) {
+    try {
+      console.log('[DEBUG] Lösche temporäre Aufnahmedatei:', recordingFilePath);
+      fs.unlinkSync(recordingFilePath);
+      console.log('[DEBUG] Temporäre Aufnahmedatei gelöscht.');
+    } catch (error) {
+      console.error('[DEBUG] Fehler beim Löschen der temporären Datei:', error);
+    }
+  }
+  
+  console.log('[DEBUG] Abbruch der Aufnahme abgeschlossen');
   return { success: true };
 }
 
@@ -625,6 +685,14 @@ async function insertTextAtCursor(text) {
 
 // Audio an API senden und Transkription abrufen
 async function transcribeAudio(filePath) {
+  console.log('[DEBUG] transcribeAudio aufgerufen mit Datei:', filePath);
+  
+  // Prüfen, ob die Datei existiert, bevor wir fortfahren
+  if (!fs.existsSync(filePath)) {
+    console.error(`[DEBUG] Fehler: Audiodatei existiert nicht: ${filePath}`);
+    throw new Error('Die Aufnahmedatei wurde nicht gefunden. Möglicherweise wurde die Aufnahme abgebrochen.');
+  }
+  
   const apiType = store.get('apiType', 'elevenlabs');
   const apiKey = store.get('elevenlabsApiKey', '');
   
@@ -632,55 +700,73 @@ async function transcribeAudio(filePath) {
     throw new Error('API-Schlüssel fehlt. Bitte in den Einstellungen konfigurieren.');
   }
   
-  const audioData = await readFileAsync(filePath);
-  
-  if (apiType === 'elevenlabs') {
-    // 11Labs API
-    const form = new FormData();
-    form.append('audio', audioData, {
-      filename: 'audio.wav',
-      contentType: 'audio/wav'
-    });
+  try {
+    console.log('[DEBUG] Lese Audiodatei:', filePath);
+    const audioData = await readFileAsync(filePath);
+    console.log(`[DEBUG] Audiodatei gelesen, Größe: ${audioData.length} Bytes`);
     
-    const response = await fetch('https://api.elevenlabs.io/v1/speech-to-text', {
-      method: 'POST',
-      headers: {
-        'xi-api-key': apiKey
-      },
-      body: form
-    });
-    
-    if (!response.ok) {
-      throw new Error(`11Labs API-Fehler: ${response.status} ${response.statusText}`);
+    if (audioData.length < 1000) {
+      console.error('[DEBUG] Audiodatei ist zu klein/leer');
+      throw new Error('Die Aufnahme ist zu kurz oder leer. Bitte versuche es erneut.');
     }
     
-    const data = await response.json();
-    return data.text || '';
-  } else if (apiType === 'openai') {
-    // OpenAI API
-    const form = new FormData();
-    form.append('file', audioData, {
-      filename: 'audio.wav',
-      contentType: 'audio/wav'
-    });
-    form.append('model', 'whisper-1');
-    
-    const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`
-      },
-      body: form
-    });
-    
-    if (!response.ok) {
-      throw new Error(`OpenAI API-Fehler: ${response.status} ${response.statusText}`);
+    if (apiType === 'elevenlabs') {
+      // 11Labs API
+      console.log('[DEBUG] Sende Anfrage an ElevenLabs API');
+      const form = new FormData();
+      form.append('audio', audioData, {
+        filename: 'audio.wav',
+        contentType: 'audio/wav'
+      });
+      
+      const response = await fetch('https://api.elevenlabs.io/v1/speech-to-text', {
+        method: 'POST',
+        headers: {
+          'xi-api-key': apiKey
+        },
+        body: form
+      });
+      
+      if (!response.ok) {
+        console.error(`[DEBUG] ElevenLabs API-Fehler: ${response.status} ${response.statusText}`);
+        throw new Error(`11Labs API-Fehler: ${response.status} ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      console.log('[DEBUG] ElevenLabs API-Antwort erhalten');
+      return data.text || '';
+    } else if (apiType === 'openai') {
+      // OpenAI API
+      console.log('[DEBUG] Sende Anfrage an OpenAI API');
+      const form = new FormData();
+      form.append('file', audioData, {
+        filename: 'audio.wav',
+        contentType: 'audio/wav'
+      });
+      form.append('model', 'whisper-1');
+      
+      const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`
+        },
+        body: form
+      });
+      
+      if (!response.ok) {
+        console.error(`[DEBUG] OpenAI API-Fehler: ${response.status} ${response.statusText}`);
+        throw new Error(`OpenAI API-Fehler: ${response.status} ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      console.log('[DEBUG] OpenAI API-Antwort erhalten');
+      return data.text || '';
+    } else {
+      throw new Error('Ungültiger API-Typ ausgewählt');
     }
-    
-    const data = await response.json();
-    return data.text || '';
-  } else {
-    throw new Error('Ungültiger API-Typ ausgewählt');
+  } catch (error) {
+    console.error('[DEBUG] Fehler in transcribeAudio:', error);
+    throw error; // Fehler weitergeben
   }
 }
 
@@ -739,25 +825,70 @@ app.whenReady().then(() => {
   createOverlayWindow();
   createTray();
   
-  // F5 als globalen Shortcut registrieren (ohne modifier)
-  // macOS-Shortcut: falls F5 nicht funktioniert, könnte "f5" direkt verwendet werden
-  const success = globalShortcut.register('f5', () => {
-    // Direkt die toggle-Funktion aufrufen statt über IPC-Handler
-    if (recording) {
-      stopRecording();
-    } else {
-      startRecording();
+  // Variable zum Überwachen schneller Wiederholungen von F5 hinzufügen
+  let lastF5Time = 0;
+  let isProcessing = false;
+  
+  // F5 als globalen Shortcut registrieren
+  const success = globalShortcut.register('f5', async () => {
+    // Debouncing-Mechanismus: Zu schnelle Aufrufe filtern (innerhalb von 800ms)
+    const now = Date.now();
+    if (now - lastF5Time < 800) {
+      console.log('F5 wurde zu schnell hintereinander gedrückt, ignoriere...');
+      return;
+    }
+    
+    // Verarbeitung läuft bereits - blockieren
+    if (isProcessing) {
+      console.log('Bereits eine F5-Aktion in Bearbeitung, ignoriere...');
+      return;
+    }
+    
+    lastF5Time = now;
+    isProcessing = true;
+    
+    try {
+      // Statusüberprüfung und entsprechende Aktion
+      if (recording) {
+        await stopRecording();
+      } else {
+        await startRecording();
+      }
+    } catch (error) {
+      console.error('Fehler bei der F5-Verarbeitung:', error);
+    } finally {
+      // Nach einer kurzen Verzögerung wieder aktivieren (verhindert Mehrfach-Auslösung)
+      setTimeout(() => {
+        isProcessing = false;
+      }, 500);
     }
   });
   
   if (!success) {
     console.error('Globaler Shortcut F5 konnte nicht registriert werden');
     // Alternativ-Shortcut versuchen
-    const altSuccess = globalShortcut.register('CommandOrControl+5', () => {
-      if (recording) {
-        stopRecording();
-      } else {
-        startRecording();
+    const altSuccess = globalShortcut.register('CommandOrControl+5', async () => {
+      // Gleicher Debouncing-Mechanismus wie für F5
+      const now = Date.now();
+      if (now - lastF5Time < 800 || isProcessing) {
+        return;
+      }
+      
+      lastF5Time = now;
+      isProcessing = true;
+      
+      try {
+        if (recording) {
+          await stopRecording();
+        } else {
+          await startRecording();
+        }
+      } catch (error) {
+        console.error('Fehler bei CommandOrControl+5-Verarbeitung:', error);
+      } finally {
+        setTimeout(() => {
+          isProcessing = false;
+        }, 500);
       }
     });
     
