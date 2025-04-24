@@ -3,6 +3,10 @@
 A alternative to macOS dictation with better speech-to-text transcription across multiple languages on F5 shortcut, as Apple's built-in dictation feature sucks.
 The app runs in the background, is accessible via the menu bar, and helps you quickly convert spoken language into text inserted at the current cursor position.
 
+<p align="center">
+  <img src="assets/demo/Demo.gif" alt="SpeakNote Demo">
+</p>
+
 ## Features
 
 - **Global Hotkey:** F5 starts/stops recording (replacing the default macOS dictation function)
