@@ -7,13 +7,25 @@ contextBridge.exposeInMainWorld('electronAPI', {
   
   // Einstellungen
   saveSettings: (settings) => ipcRenderer.invoke('save-settings', settings),
+  setAPIKey: (apiSettings) => ipcRenderer.invoke('set-api-key', apiSettings),
+  
+  // API Optionen zentral verwalten
+  getAPIOptions: () => ipcRenderer.invoke('get-api-options'),
   
   // Aufnahme-Steuerung
   toggleRecording: () => ipcRenderer.invoke('toggle-recording'),
-  cancelRecording: () => ipcRenderer.invoke('cancel-recording'), // Neue Funktion zum Abbrechen
+  cancelRecording: () => ipcRenderer.invoke('cancel-recording'),
   
   // Overlay schließen
   closeOverlay: () => ipcRenderer.invoke('close-overlay'),
+  
+  // Onboarding-Funktionen
+  onboarding: {
+    openAccessibilitySettings: () => ipcRenderer.invoke('open-accessibility-settings'),
+    openMicrophoneSettings: () => ipcRenderer.invoke('open-microphone-settings'), // Neue Funktion
+    checkAccessibilityPermission: () => ipcRenderer.invoke('check-accessibility-permission'),
+    finishOnboarding: () => ipcRenderer.invoke('finish-onboarding')
+  },
   
   // Event-Listener
   onSettingsLoaded: (callback) => {
@@ -27,7 +39,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   onCancelRecordingDirect: (callback) => {
     ipcRenderer.on('cancel-recording-direct', () => callback());
-  }, // Neuer Event
+  },
   onTranscriptionStarted: (callback) => {
     ipcRenderer.on('transcription-started', () => callback());
   },

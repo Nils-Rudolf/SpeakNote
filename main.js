@@ -10,12 +10,37 @@ const writeFileAsync = promisify(fs.writeFile);
 const readFileAsync = promisify(fs.readFile);
 const unlinkAsync = promisify(fs.unlink);
 
+// API-Optionen zentral definieren
+const apiOptions = [
+  { value: 'openai', name: 'OpenAI Whisper', default: true },
+  { value: 'elevenlabs', name: 'ElevenLabs Scribe' },
+  // Weitere APIs können hier hinzugefügt werden
+];
+
 // Konfigurationsspeicher initialisieren
 const store = new Store();
+
+// Pfad zur Sox-Binärdatei ermitteln (unterschiedlich für Entwicklung und Production)
+let soxPath = 'sox'; // Standard-Wert für Entwicklung
+
+// Wenn die App gepackt ist, verwenden wir die eingebettete Sox-Binärdatei
+if (app.isPackaged) {
+  // In der gepackten App ist Sox im Resources-Verzeichnis
+  soxPath = path.join(process.resourcesPath, 'sox');
+  console.log('Verwende eingebettete Sox-Binärdatei:', soxPath);
+  
+  // Stelle sicher, dass die Sox-Binärdatei ausführbar ist
+  try {
+    fs.chmodSync(soxPath, '755');
+  } catch (error) {
+    console.error('Fehler beim Setzen der Ausführungsrechte für Sox:', error);
+  }
+}
 
 // Globale Variablen
 let mainWindow;
 let overlayWindow;
+let onboardingWindow = null; // Neues Fenster für Onboarding
 let tray = null;
 let recording = false;
 let recordingStartTime = 0; // Speichert den Zeitpunkt, wann die Aufnahme gestartet wurde
@@ -107,6 +132,33 @@ function createOverlayWindow() {
     if (recording) {
       stopRecording();
     }
+  });
+}
+
+// Onboarding-Fenster erstellen (nur beim ersten Start anzeigen)
+function createOnboardingWindow() {
+  onboardingWindow = new BrowserWindow({
+    width: 700,
+    height: 650,
+    resizable: true,
+    minimizable: true,
+    fullscreenable: false,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false
+    },
+    center: true,
+    // Standard-Titelleiste verwenden, aber im CSS ausblenden
+    frame: true,
+    titleBarStyle: 'default',
+    backgroundColor: '#f5f5f7'
+  });
+
+  onboardingWindow.loadFile('src/onboarding.html');
+  
+  onboardingWindow.on('close', () => {
+    onboardingWindow = null;
   });
 }
 
@@ -335,10 +387,10 @@ async function startRecording() {
   let recordCmd;
   if (selectedDevice && selectedDevice.trim() !== '') {
     // Mit spezifischem Gerät
-    recordCmd = `sox -d -r 44100 -c 1 "${recordingFilePath}" trim 0 silence 1 0.1 1%`;
+    recordCmd = `${soxPath} -d -r 44100 -c 1 "${recordingFilePath}" trim 0 silence 1 0.1 1%`;
   } else {
     // Mit Standard-Gerät
-    recordCmd = `sox -d -r 44100 -c 1 "${recordingFilePath}"`;
+    recordCmd = `${soxPath} -d -r 44100 -c 1 "${recordingFilePath}"`;
   }
   
   console.log('[DEBUG] Starte Aufnahme mit Befehl:', recordCmd);
@@ -807,6 +859,11 @@ ipcMain.handle('cancel-recording', async () => {
   return await cancelRecordingProcess();
 });
 
+// Handler zum Abrufen der API-Optionen
+ipcMain.handle('get-api-options', () => {
+  return apiOptions;
+});
+
 // Handler zum Schließen des Overlays
 ipcMain.handle('close-overlay', () => {
   if (overlayWindow && !overlayWindow.isDestroyed()) {
@@ -819,11 +876,96 @@ ipcMain.handle('close-overlay', () => {
   return { success: true };
 });
 
+// Handler für Onboarding-Prozess
+ipcMain.handle('open-accessibility-settings', async () => {
+  // macOS-spezifischer Code für Bedienungshilfen-Einstellungen
+  if (process.platform === 'darwin') {
+    exec('open "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"', (error) => {
+      if (error) {
+        console.error('Fehler beim Öffnen der Bedienungshilfen-Einstellungen:', error);
+      }
+    });
+  }
+  return { success: true };
+});
+
+// Neuer Handler für Mikrofoneinstellungen
+ipcMain.handle('open-microphone-settings', async () => {
+  // macOS-spezifischer Code für Mikrofoneinstellungen
+  if (process.platform === 'darwin') {
+    exec('open "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"', (error) => {
+      if (error) {
+        console.error('Fehler beim Öffnen der Mikrofoneinstellungen:', error);
+      }
+    });
+  }
+  return { success: true };
+});
+
+ipcMain.handle('check-accessibility-permission', async () => {
+  // Prüft, ob die App Bedienungshilfen-Berechtigungen hat
+  // Diese Überprüfung ist kompliziert und nicht direkt möglich in Electron
+  // Wir verwenden einen Testversuch, um zu sehen, ob AppleScript ausgeführt werden kann
+  try {
+    await new Promise((resolve, reject) => {
+      const testScript = `
+        tell application "System Events"
+          display dialog "Test" buttons {"OK"} default button "OK" with hidden after 0.1
+        end tell
+      `;
+      
+      exec(`osascript -e '${testScript}'`, (error) => {
+        if (error) {
+          // Wenn ein Fehler auftritt, hat die App wahrscheinlich keine Bedienungshilfen-Berechtigungen
+          reject(new Error('Keine Bedienungshilfen-Berechtigung'));
+        } else {
+          resolve();
+        }
+      });
+    });
+    
+    return { hasPermission: true };
+  } catch (error) {
+    return { hasPermission: false };
+  }
+});
+
+ipcMain.handle('set-api-key', async (event, apiSettings) => {
+  const { apiType, apiKey } = apiSettings;
+  
+  // API-Schlüssel speichern
+  store.set('elevenlabsApiKey', apiKey);
+  store.set('apiType', apiType);
+  
+  return { success: true };
+});
+
+ipcMain.handle('finish-onboarding', () => {
+  // Onboarding als abgeschlossen markieren
+  store.set('onboardingCompleted', true);
+  
+  // Onboarding-Fenster schließen
+  if (onboardingWindow && !onboardingWindow.isDestroyed()) {
+    onboardingWindow.close();
+  }
+  
+  return { success: true };
+});
+
 // App-Events
 app.whenReady().then(() => {
   createMainWindow();
   createOverlayWindow();
   createTray();
+  
+  // Prüfen, ob das Onboarding bereits abgeschlossen wurde
+  const onboardingCompleted = store.get('onboardingCompleted', false);
+  //const onboardingCompleted = false;
+  
+  // Beim ersten Start das Onboarding anzeigen
+  if (!onboardingCompleted) {
+    createOnboardingWindow();
+  }
   
   // Variable zum Überwachen schneller Wiederholungen von F5 hinzufügen
   let lastF5Time = 0;

@@ -7,6 +7,32 @@ const refreshDevicesBtn = document.getElementById('refreshDevices');
 const saveSettingsBtn = document.getElementById('saveSettings');
 const statusMessage = document.getElementById('statusMessage');
 
+// Load API options dynamically from main process
+async function loadApiOptions() {
+  try {
+    const apiOptions = await window.electronAPI.getAPIOptions();
+    
+    // Clear and refill API type dropdown
+    apiTypeSelect.innerHTML = '';
+    
+    // Add available API options
+    apiOptions.forEach(option => {
+      const optElement = document.createElement('option');
+      optElement.value = option.value;
+      optElement.textContent = option.name;
+      optElement.selected = option.default || false;
+      apiTypeSelect.appendChild(optElement);
+    });
+  } catch (error) {
+    console.error('Error loading API options:', error);
+    // Fallback options if loading fails
+    apiTypeSelect.innerHTML = `
+      <option value="elevenlabs">ElevenLabs Scribe</option>
+      <option value="openai">OpenAI Whisper</option>
+    `;
+  }
+}
+
 // Load audio devices
 async function loadAudioDevices() {
   try {
@@ -84,7 +110,18 @@ window.electronAPI.onSettingsLoaded((settings) => {
   const { apiKey, apiType, audioDevice } = settings;
   
   apiKeyInput.value = apiKey || '';
-  apiTypeSelect.value = apiType || 'elevenlabs';
+  
+  // First load API options, then set the selected one
+  loadApiOptions().then(() => {
+    if (apiType) {
+      for (let i = 0; i < apiTypeSelect.options.length; i++) {
+        if (apiTypeSelect.options[i].value === apiType) {
+          apiTypeSelect.selectedIndex = i;
+          break;
+        }
+      }
+    }
+  });
   
   // Load audio devices and then select the saved one
   loadAudioDevices().then(() => {
@@ -104,5 +141,6 @@ refreshDevicesBtn.addEventListener('click', loadAudioDevices);
 showApiKeyBtn.addEventListener('click', toggleApiKeyVisibility);
 saveSettingsBtn.addEventListener('click', saveSettings);
 
-// Initially load audio devices
+// Initially load API options and audio devices
+loadApiOptions();
 loadAudioDevices();

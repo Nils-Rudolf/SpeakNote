@@ -6,6 +6,7 @@
   "scripts": {
     "start": "electron .",
     "build": "electron-builder",
+    "postinstall": "electron-builder install-app-deps",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "",
@@ -31,10 +32,23 @@
       "gatekeeperAssess": false,
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
+      "extraResources": [
+        {
+          "from": "resources/sox",
+          "to": "sox"
+        }
+      ],
       "extendInfo": {
         "LSUIElement": true,
         "NSMicrophoneUsageDescription": "TransBuddy benötigt Zugriff auf das Mikrofon, um Sprachaufnahmen zu transkribieren"
       }
-    }
+    },
+    "extraResources": [
+      {
+        "from": "resources/sox",
+        "to": "sox"
+      }
+    ],
+    "afterPack": "scripts/afterPack.js"
   }
 }

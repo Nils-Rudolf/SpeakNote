@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TransBuddy - Welcome</title>
+    <link rel="stylesheet" href="onboarding.css">
+</head>
+<body>
+    <div class="container">
+        <img src="../assets/transbuddy_logo.png" alt="TransBuddy Logo" class="logo">
+        <h1>Welcome to TransBuddy</h1>
+
+        <div id="step1" class="step active">
+            <div class="step-title"><span class="step-number">1</span>Allow Microphone Access</div>
+            <div class="step-content">
+                <p>TransBuddy needs access to your microphone to record and transcribe speech.</p>
+                <p>You will be directed to System Settings > Privacy & Security > Microphone.</p>
+                <div id="mic-permission-container" class="left-aligned">
+                    <button id="open-mic-settings" class="btn-secondary">Open Microphone Settings</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="step2" class="step">
+            <div class="step-title"><span class="step-number">2</span>Enable Accessibility Features</div>
+            <div class="step-content">
+                <p>TransBuddy needs accessibility access to insert text into other applications.</p>
+                <p>You will be directed to System Settings > Privacy & Security > Accessibility.</p>
+                <br>
+                <button id="open-accessibility" class="btn-secondary">Open Accessibility Settings</button>
+            </div>
+        </div>
+
+        <div id="step3" class="step">
+            <div class="step-title"><span class="step-number">3</span>Set Up API Key</div>
+            <div class="step-content">
+                <p>TransBuddy uses an API for speech recognition. Please enter your API key.</p>
+                <p>You can skip this step and add the API key later in settings.</p>
+                <div class="form-group">
+                    <label for="apiType">API Type:</label>
+                    <select id="apiType">
+                        <!-- API options will be loaded dynamically -->
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="apiKey">API Key:</label>
+                    <input type="password" id="apiKey" placeholder="Enter your API key">
+                </div>
+            </div>
+        </div>
+
+        <div id="step4" class="step">
+            <div class="step-title"><span class="step-number">4</span>Ready to Go!</div>
+            <div class="step-content">
+                <p>TransBuddy is now set up and ready to use!</p>
+                <p>Press <strong>F5</strong> to start recording, and <strong>F5</strong> again to stop and transcribe.</p>
+                <p>You can adjust settings anytime from the menu bar icon.</p>
+            </div>
+        </div>
+
+        <div class="button-group">
+            <button id="prev-btn" class="btn-secondary" style="visibility: hidden;">Back</button>
+            <button id="next-btn" class="btn-primary">Next</button>
+        </div>
+
+        <div class="progress-dots">
+            <div class="dot active" data-step="1"></div>
+            <div class="dot" data-step="2"></div>
+            <div class="dot" data-step="3"></div>
+            <div class="dot" data-step="4"></div>
+        </div>
+    </div>
+
+    <script src="onboarding.js"></script>
+</body>
+</html>
