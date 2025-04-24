@@ -959,7 +959,7 @@ app.whenReady().then(() => {
   createTray();
   
   // Prüfen, ob das Onboarding bereits abgeschlossen wurde
-  const onboardingCompleted = store.get('onboardingCompleted', false);
+  const onboardingCompleted = store.get('onboardingCompleted', false); //To reset onboarding status: open ~/Library/Application\ Support/transbuddy/config.json
   //const onboardingCompleted = false;
   
   // Beim ersten Start das Onboarding anzeigen
