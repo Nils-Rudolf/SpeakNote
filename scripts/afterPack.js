@@ -6,7 +6,7 @@ const { execSync } = require('child_process');
 
 exports.default = function(context) {
   const appOutDir = context.appOutDir;
-  const resourcesPath = path.join(appOutDir, 'TransBuddy.app/Contents/Resources/sox');
+  const resourcesPath = path.join(appOutDir, 'SpeakNote.app/Contents/Resources/sox');
   
   console.log('Setze Berechtigungen für Sox...');
   

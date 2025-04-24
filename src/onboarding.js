@@ -1,4 +1,4 @@
-// Onboarding process for TransBuddy
+// Onboarding process for SpeakNote
 document.addEventListener('DOMContentLoaded', () => {
     let currentStep = 1;
     const totalSteps = 4;
@@ -39,8 +39,7 @@ document.addEventListener('DOMContentLoaded', () => {
             console.error('Failed to load API options:', error);
             // Fallback options if loading fails
             apiTypeSelect.innerHTML = `
-                <option value="openai">OpenAI Whisper</option>
-                <option value="elevenlabs">ElevenLabs Scribe</option>
+                <option value="openai" selected>OpenAI Whisper</option>
             `;
         }
     }

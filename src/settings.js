@@ -27,8 +27,7 @@ async function loadApiOptions() {
     console.error('Error loading API options:', error);
     // Fallback options if loading fails
     apiTypeSelect.innerHTML = `
-      <option value="elevenlabs">ElevenLabs Scribe</option>
-      <option value="openai">OpenAI Whisper</option>
+      <option value="openai" selected>OpenAI Whisper</option>
     `;
   }
 }

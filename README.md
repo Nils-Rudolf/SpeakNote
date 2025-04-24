@@ -1,57 +1,79 @@
-# TransBuddy
+# SpeakNote
 
-Basically Apple's dictation feature with better voice transcription. 
-
-TransBuddy is a macOS application that enables automatic speech-to-text transcription using a global hotkey. The app runs in the background, is accessible via the menu bar, and helps you quickly convert spoken language into text inserted at the current cursor position.
+A alternative to macOS dictation with better speech-to-text transcription across multiple languages on F5 shortcut, as Apple's built-in dictation feature sucks.
+The app runs in the background, is accessible via the menu bar, and helps you quickly convert spoken language into text inserted at the current cursor position.
 
 ## Features
 
-- **Global Hotkey:** F5 starts/stops recording
+- **Global Hotkey:** F5 starts/stops recording (replacing the default macOS dictation function)
 - **Floating Overlay:** Displays recording status with audio visualization
-- **API Integration:** Supports OpenAI for speech recognition
+- **API Integration:** Supports OpenAI Whisper for speech recognition
 - **Settings:** Configure API key and select audio input device
 - **Direct Insertion:** Transcribed text is automatically inserted at the current cursor position
 
-## Requirements
+## Installation
+
+### Option 1: Download DMG
+
+1. Go to the [Releases](https://github.com/Nils-Rudolf/SpeakNote/releases) page
+2. Download the appropriate DMG for your Mac:
+   - For Apple Silicon Macs (M1/M2/M3...): Download the arm64 version
+   - For Intel Macs: Download the x64 version
+
+### Option 2: Build from Source
+
+#### Requirements
 
 - Node.js and npm
 - [Sox](http://sox.sourceforge.net/) for audio recording
+- Xcode Command Line Tools (for building native dependencies)
 
-## Installation
+#### Build Steps
 
-1. Clone or download the repository
+1. Clone the repository:
+   ```
+   git clone https://github.com/Nils-Rudolf/SpeakNote.git
+   cd SpeakNote
+   ```
+
 2. Install dependencies:
+   ```
+   npm install
+   ```
 
-npm install
+3. Install Sox if not already installed:
+   ```
+   brew install sox
+   ```
 
-3. Install Sox (if not already installed):
+4. Build the application:
+   ```
+   npm run build
+   ```
+   
+   For specific architectures:
+   ```
+   npm run build-arm64    # For Apple Silicon Macs
+   npm run build-x64      # For Intel Macs
+   ```
 
-brew install sox
+5. The compiled app will be located in the `dist` folder.
 
 ## Usage
 
-1. Start the application:
-
-npm start
-
-2. Access settings via menu bar icon
+1. Start the application from your Applications folder
+2. Allow access to the microphone and accessibility in the settings
 3. Configure API key and audio input device
 4. Press F5 to start recording
 5. Press F5 again to stop and transcribe the recording
 
-## Build App
+## API Setup
 
-To build a standalone app:
-
-npm run build
-
-The compiled app will be located in the `dist` folder.
-
-## Get an API Key
-
-- **OpenAI:** Sign up at [OpenAI](https://platform.openai.com/signup) and generate an API key
+### OpenAI Whisper
+1. Sign up at [OpenAI](https://platform.openai.com/api-keys)
+2. Generate an API key
+3. Enter the API key in SpeakNote settings
 
 ## Notes
 
 - The F5 shortcut is globally overridden, so the default macOS dictation function on F5 will be unavailable
-- The app uses AppleScript to insert text at the cursor position, which may require Accessibility permissions

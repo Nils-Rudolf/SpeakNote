@@ -1,15 +1,18 @@
 {
-  "name": "transbuddy",
+  "name": "SpeakNote",
   "version": "1.0.0",
-  "description": "Speech-to-Text Transkription mit globalem Shortcut für macOS",
+  "description": "Speech-to-Text transcription with global shortcut for macOS",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
     "build": "electron-builder",
+    "build-arm64": "electron-builder --mac --arm64",
+    "build-x64": "electron-builder --mac --x64",
+    "build-universal": "electron-builder --mac --universal",
     "postinstall": "electron-builder install-app-deps",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "author": "",
+  "author": "Nils Rudolf",
   "license": "MIT",
   "devDependencies": {
     "electron": "^29.0.0",
@@ -21,12 +24,17 @@
     "form-data": "^4.0.0"
   },
   "build": {
-    "appId": "com.transbuddy.app",
-    "productName": "TransBuddy",
+    "appId": "com.SpeakNote.app",
+    "productName": "SpeakNote",
     "mac": {
       "category": "public.app-category.productivity",
-      "target": "dmg",
-      "icon": "assets/transbuddy_logo.png",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["arm64", "x64"]
+        }
+      ],
+      "icon": "assets/SpeakNote_logo.png",
       "darkModeSupport": true,
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
@@ -40,7 +48,7 @@
       ],
       "extendInfo": {
         "LSUIElement": true,
-        "NSMicrophoneUsageDescription": "TransBuddy benötigt Zugriff auf das Mikrofon, um Sprachaufnahmen zu transkribieren"
+        "NSMicrophoneUsageDescription": "SpeakNote needs access to your microphone to record and transcribe speech"
       }
     },
     "extraResources": [

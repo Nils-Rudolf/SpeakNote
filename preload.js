@@ -1,33 +1,33 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
-// API für den Renderer-Prozess verfügbar machen
+// Make API available to the renderer process
 contextBridge.exposeInMainWorld('electronAPI', {
-  // Audio-Geräte
+  // Audio devices
   getAudioDevices: () => ipcRenderer.invoke('get-audio-devices'),
   
-  // Einstellungen
+  // Settings
   saveSettings: (settings) => ipcRenderer.invoke('save-settings', settings),
   setAPIKey: (apiSettings) => ipcRenderer.invoke('set-api-key', apiSettings),
   
-  // API Optionen zentral verwalten
+  // Centrally manage API options
   getAPIOptions: () => ipcRenderer.invoke('get-api-options'),
   
-  // Aufnahme-Steuerung
+  // Recording control
   toggleRecording: () => ipcRenderer.invoke('toggle-recording'),
   cancelRecording: () => ipcRenderer.invoke('cancel-recording'),
   
-  // Overlay schließen
+  // Close overlay
   closeOverlay: () => ipcRenderer.invoke('close-overlay'),
   
-  // Onboarding-Funktionen
+  // Onboarding functions
   onboarding: {
     openAccessibilitySettings: () => ipcRenderer.invoke('open-accessibility-settings'),
-    openMicrophoneSettings: () => ipcRenderer.invoke('open-microphone-settings'), // Neue Funktion
+    openMicrophoneSettings: () => ipcRenderer.invoke('open-microphone-settings'),
     checkAccessibilityPermission: () => ipcRenderer.invoke('check-accessibility-permission'),
     finishOnboarding: () => ipcRenderer.invoke('finish-onboarding')
   },
   
-  // Event-Listener
+  // Event listeners
   onSettingsLoaded: (callback) => {
     ipcRenderer.on('settings-loaded', (_, data) => callback(data));
   },
