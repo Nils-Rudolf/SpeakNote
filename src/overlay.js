@@ -1,4 +1,4 @@
-// DOM-Elemente
+// DOM Elements
 const statusText = document.getElementById('statusText');
 const timer = document.getElementById('timer');
 const toggleRecordingButton = document.getElementById('toggleRecording');
@@ -7,35 +7,35 @@ const closeWindowButton = document.getElementById('closeWindowButton');
 const errorMessage = document.getElementById('errorMessage');
 const audioVisualizer = document.getElementById('audioVisualizer');
 
-// Visualisierungs-Kontext
+// Visualization context
 const ctx = audioVisualizer.getContext('2d');
 let recording = false;
 let recordingStartTime = 0;
 let timerInterval = null;
 let animationFrame = null;
 
-// Neue Flags für besseres State-Management
-let isUIFrozen = false; // Erkennt, ob die UI eingefroren ist
-let isRecoveryMode = false; // Flag für den Wiederherstellungsmodus
-let lastCancelTime = 0; // Zeitpunkt des letzten Abbruchs
+// New flags for better state management
+let isUIFrozen = false; // Detects if the UI is frozen
+let isRecoveryMode = false; // Flag for recovery mode
+let lastCancelTime = 0; // Timestamp of the last cancellation
 
-// Audio-Analyse-Variablen
+// Audio analysis variables
 let audioContext = null;
 let analyser = null;
 let microphone = null;
 let dataArray = null;
 let bufferLength = 0;
-let audioStream = null; // Neue Variable zum Speichern des Medienstreams
+let audioStream = null; // New variable to store the media stream
 
-// Visualisierungs-Variablen
+// Visualization variables
 const visualizationHistory = [];
-const maxVisualBars = 60; // Wie viele Balken sollen maximal angezeigt werden
-const visualizationRate = 100; // 10 Balken pro Sekunde (100ms Intervall)
+const maxVisualBars = 60; // How many bars should be displayed at maximum
+const visualizationRate = 100; // 10 bars per second (100ms interval)
 let visualizationInterval = null;
 
-// Initialisieren des Visualizers
+// Initialize the visualizer
 function initVisualizer() {
-  // Canvas-Größe setzen
+  // Set canvas size
   function resizeCanvas() {
     const container = audioVisualizer.parentElement;
     audioVisualizer.width = container.clientWidth;
@@ -45,105 +45,105 @@ function initVisualizer() {
   resizeCanvas();
   window.addEventListener('resize', resizeCanvas);
   
-  // Initial zeichnen (statisches Muster für den Anfang)
+  // Initial drawing (static pattern for the beginning)
   drawStaticWaveform();
 }
 
-// Statische Wellenform zeichnen (wird nur angezeigt, wenn keine Aufnahme läuft)
+// Draw static waveform (only shown when no recording is in progress)
 function drawStaticWaveform() {
   const width = audioVisualizer.width;
   const height = audioVisualizer.height;
   
-  // Hintergrund löschen
+  // Clear background
   ctx.clearRect(0, 0, width, height);
   
-  // Statt einer einzelnen Linie zeichnen wir feine, schwach sichtbare vertikale Linien
-  // als Platzhalter für die aktive Visualisierung
+  // Instead of a single line, we draw fine, faintly visible vertical lines
+  // as placeholders for the active visualization
   const barCount = maxVisualBars;
   const barWidth = 1;
   const spacing = Math.floor((width - (barCount * barWidth)) / (barCount - 1));
   const totalBarWidth = barWidth + spacing;
   
-  // Stil für die statischen Linien
-  ctx.fillStyle = '#cccccc'; // Hellgrauer Farbton für die inaktiven Linien
+  // Style for static lines
+  ctx.fillStyle = '#cccccc'; // Light gray color for inactive lines
   
-  // Zeichne die vertikalen Linien über die gesamte Breite
+  // Draw vertical lines across the entire width
   for (let i = 0; i < barCount; i++) {
     const x = i * totalBarWidth;
-    const barHeight = height * 0.2; // 20% der Höhe
-    const y = (height - barHeight) / 2; // Zentriert
+    const barHeight = height * 0.2; // 20% of the height
+    const y = (height - barHeight) / 2; // Centered
     
     ctx.fillRect(x, y, barWidth, barHeight);
   }
 }
 
-// Echte Audio-Visualisierung mit Web Audio API
+// Real audio visualization with Web Audio API
 async function setupAudioVisualization() {
   try {
-    // Falls bereits initialisiert, zurücksetzen
+    // If already initialized, reset
     if (audioContext) {
       await stopAudioAnalysis();
     }
     
-    // Audio-Kontext erstellen
+    // Create audio context
     audioContext = new (window.AudioContext || window.webkitAudioContext)();
     analyser = audioContext.createAnalyser();
     
-    // FFT-Größe für die Frequenzanalyse einstellen
+    // Set FFT size for frequency analysis
     analyser.fftSize = 256;
     bufferLength = analyser.frequencyBinCount;
     dataArray = new Uint8Array(bufferLength);
     
-    // Mikrofon-Stream anfordern
+    // Request microphone stream
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    audioStream = stream; // Speichere den Stream für späteres Stoppen
+    audioStream = stream; // Store the stream for later stopping
     
-    // Mikrofon mit Audio-Kontext verbinden
+    // Connect microphone to audio context
     microphone = audioContext.createMediaStreamSource(stream);
     microphone.connect(analyser);
     
-    // Animation starten
+    // Start animation
     drawVisualization();
     
-    // Starte regelmäßige Aktualisierung der Audiodaten
+    // Start regular updates of audio data
     startVisualizationTimer();
     
     return true;
   } catch (error) {
-    console.error('Audio-Visualisierung konnte nicht initialisiert werden:', error);
-    showError('Mikrofon-Zugriff verweigert oder nicht verfügbar');
+    console.error('Audio visualization could not be initialized:', error);
+    showError('Microphone access denied or not available');
     return false;
   }
 }
 
-// Audio-Analyse stoppen - mit zusätzlichem Force-Option für Notfall-Reset
+// Stop audio analysis - with additional force option for emergency reset
 async function stopAudioAnalysis(force = false) {
-  // Wenn force aktiviert ist, setzen wir alle Flags zurück
+  // If force is enabled, reset all flags
   if (force) {
     isUIFrozen = false;
     isRecoveryMode = false;
   }
   
   try {
-    // Sofort die Animation beenden
+    // Immediately stop the animation
     if (animationFrame) {
       cancelAnimationFrame(animationFrame);
       animationFrame = null;
     }
     
-    // Sofort alle Timer beenden
+    // Immediately stop all timers
     stopVisualizationTimer();
     
     if (microphone) {
       try {
         microphone.disconnect();
       } catch (e) {
-        console.log('Fehler beim Trennen des Mikrofons:', e);
+        console.log('Error disconnecting the microphone:', e);
       }
       microphone = null;
     }
     
-    // Sofort alle Tracks im MediaStream beenden
+    // Immediately stop all tracks in the MediaStream
     if (audioStream) {
       try {
         const tracks = audioStream.getTracks();
@@ -151,27 +151,27 @@ async function stopAudioAnalysis(force = false) {
           track.stop();
         }
       } catch (e) {
-        console.log('Fehler beim Stoppen der Audio-Tracks:', e);
+        console.log('Error stopping the audio tracks:', e);
       }
       audioStream = null;
     }
     
-    // Audio-Kontext mit höherer Priorität schließen
+    // Audio context with higher priority close
     if (audioContext) {
       try {
-        // Im Force-Modus, schließen wir ohne auf Promises zu warten
+        // In force mode, close without waiting for promises
         if (force) {
           try {
             audioContext.close();
           } catch (e) {}
           audioContext = null;
         } else {
-          // Normale Methode mit Promise
-          await audioContext.close().catch(e => console.error('Audio-Kontext-Fehler:', e));
+          // Normal method with promise
+          await audioContext.close().catch(e => console.error('Audio context error:', e));
           audioContext = null;
         }
       } catch (error) {
-        console.error('Fehler beim Schließen des Audio-Kontexts:', error);
+        console.error('Error closing the audio context:', error);
         audioContext = null;
       }
     }
@@ -179,12 +179,12 @@ async function stopAudioAnalysis(force = false) {
     analyser = null;
     dataArray = null;
     
-    // Sofort die Visualisierung zurücksetzen
+    // Immediately reset the visualization
     visualizationHistory.length = 0;
     drawStaticWaveform();
   } catch (e) {
-    console.error('Fehler beim Stoppen der Audio-Analyse:', e);
-    // Bei Fehler im Force-Modus alle Referenzen hart zurücksetzen
+    console.error('Error stopping audio analysis:', e);
+    // In case of error in force mode, hard reset all references
     if (force) {
       microphone = null;
       audioStream = null;
@@ -198,96 +198,96 @@ async function stopAudioAnalysis(force = false) {
   }
 }
 
-// Animationsfunktion für die Mikrofon-Visualisierung
+// Animation function for microphone visualization
 function animateMicrophone() {
   if (!analyser || !recording) return;
   
   animationFrame = requestAnimationFrame(animateMicrophone);
   
-  // Frequenzdaten abrufen
+  // Get frequency data
   analyser.getByteFrequencyData(dataArray);
   
-  // Durchschnittliche Amplitude berechnen (vereinfacht)
+  // Calculate average amplitude (simplified)
   let sum = 0;
-  const sampleSize = Math.min(bufferLength, 32); // Wir verwenden nur einen Teil des Spektrums
+  const sampleSize = Math.min(bufferLength, 32); // We only use a part of the spectrum
   for (let i = 0; i < sampleSize; i++) {
     sum += dataArray[i];
   }
-  const averageAmplitude = sum / sampleSize / 255; // Normalisieren auf 0-1
+  const averageAmplitude = sum / sampleSize / 255; // Normalize to 0-1
   
   drawVisualization();
 }
 
-// Die Visualisierung der Audioamplitude zeichnen
+// Draw the visualization of audio amplitude
 function drawVisualization() {
   const width = audioVisualizer.width;
   const height = audioVisualizer.height;
   
-  // Hintergrund löschen
+  // Clear background
   ctx.clearRect(0, 0, width, height);
   
-  // Parameter für die visuelle Darstellung
+  // Parameters for visual display
   const barWidth = 2;
   const spacing = 3;
   const totalBarWidth = barWidth + spacing;
   const startX = 0;
   
-  // Zeichne die vertikalen Balken von rechts nach links
-  ctx.fillStyle = '#000000'; // Schwarze Balken
+  // Draw vertical bars from right to left
+  ctx.fillStyle = '#000000'; // Black bars
   
   for (let i = 0; i < visualizationHistory.length; i++) {
-    // Jeder Balken ist eine vertikale Linie, deren Höhe der 
-    // aufgenommenen Amplitude zu diesem Zeitpunkt entspricht
-    const barHeight = visualizationHistory[i] * height * 0.8; // 80% der maximalen Höhe
+    // Each bar is a vertical line whose height corresponds to 
+    // the recorded amplitude at that time
+    const barHeight = visualizationHistory[i] * height * 0.8; // 80% of maximum height
     
-    // X-Position: von rechts nach links
+    // X position: from right to left
     const x = startX + i * totalBarWidth;
     
-    // Y-Position: zentriert vertikal
+    // Y position: vertically centered
     const y = (height - barHeight) / 2;
     
-    // Zeichne den Balken
+    // Draw the bar
     ctx.fillRect(x, y, barWidth, barHeight);
   }
   
-  // Fülle den restlichen Raum mit den statischen Linien
+  // Fill the remaining space with static lines
   if (visualizationHistory.length < maxVisualBars) {
     const remainingBars = maxVisualBars - visualizationHistory.length;
     const offsetX = visualizationHistory.length * totalBarWidth;
     
-    ctx.fillStyle = '#cccccc'; // Hellgrau für statische Balken
+    ctx.fillStyle = '#cccccc'; // Light gray for static bars
     
     for (let i = 0; i < remainingBars; i++) {
       const x = offsetX + i * totalBarWidth;
-      const barHeight = height * 0.2; // 20% Höhe für statische Balken
+      const barHeight = height * 0.2; // 20% height for static bars
       const y = (height - barHeight) / 2;
       
       ctx.fillRect(x, y, barWidth, barHeight);
     }
   }
   
-  // Animation fortsetzen
+  // Continue animation
   if (recording) {
     animationFrame = requestAnimationFrame(drawVisualization);
   }
 }
 
-// Starte regelmäßige Aktualisierung der Audiodaten
+// Start regular updates of audio data
 function startVisualizationTimer() {
-  // Verlauf zurücksetzen und vorherige Timer stoppen
+  // Reset history and stop previous timers
   visualizationHistory.length = 0;
   
-  // Sicherstellen, dass kein vorheriger Timer noch läuft
+  // Ensure no previous timer is still running
   stopVisualizationTimer();
   
-  // Regelmäßig Audioamplitude erfassen (10 Mal pro Sekunde)
+  // Regularly capture audio amplitude (10 times per second)
   visualizationInterval = setInterval(() => {
     if (!analyser || !recording) return;
     
-    // Frequenzdaten abrufen
+    // Get frequency data
     analyser.getByteFrequencyData(dataArray);
     
-    // Durchschnittliche Amplitude berechnen
+    // Calculate average amplitude
     let sum = 0;
     const sampleSize = Math.min(bufferLength, 32);
     for (let i = 0; i < sampleSize; i++) {
@@ -295,15 +295,15 @@ function startVisualizationTimer() {
     }
     const averageAmplitude = sum / sampleSize / 255;
     
-    // Neue Amplitude zum Verlauf hinzufügen (von rechts)
+    // Add new amplitude to history (from right)
     visualizationHistory.unshift(averageAmplitude);
     if (visualizationHistory.length > maxVisualBars) {
       visualizationHistory.pop();
     }
-  }, visualizationRate); // 100ms = 10 Updates pro Sekunde
+  }, visualizationRate); // 100ms = 10 updates per second
 }
 
-// Stoppe die regelmäßige Aktualisierung
+// Stop regular updates
 function stopVisualizationTimer() {
   if (visualizationInterval) {
     clearInterval(visualizationInterval);
@@ -311,7 +311,7 @@ function stopVisualizationTimer() {
   }
 }
 
-// Aktualisiere Timer
+// Update timer
 function updateTimer() {
   if (!recording) return;
   
@@ -322,93 +322,93 @@ function updateTimer() {
   timer.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
 }
 
-// Aufnahme starten
+// Start recording
 async function startRecording() {
-  // Überprüfen, ob wir uns gerade im Recovery-Modus befinden oder ob Zeit seit letztem Abbruch zu kurz ist
+  // Check if we are in recovery mode or if the time since the last cancellation is too short
   const timeSinceLastCancel = Date.now() - lastCancelTime;
   const needsCooldown = timeSinceLastCancel < 800;
   
   if (isRecoveryMode || needsCooldown) {
-    console.log('Starte nicht sofort nach Abbruch - Cool-down aktiv');
-    // Kurze Verzögerung einfügen, damit die Audio-Ressourcen freigegeben werden können
+    console.log('Do not start immediately after cancellation - Cool-down active');
+    // Add a short delay to allow audio resources to be released
     await new Promise(resolve => setTimeout(resolve, 800));
     
-    // Vor dem Neustart sicherstellen, dass alle Audio-Ressourcen wirklich freigegeben wurden
+    // Before restarting, ensure all audio resources have been released
     await stopAudioAnalysis(true);
   }
   
-  // Jetzt erst alle Status-Flags setzen
+  // Now set all status flags
   recording = true;
   isUIFrozen = false;
   recordingStartTime = Date.now();
   
-  // UI aktualisieren
+  // Update UI
   statusText.textContent = 'Recording';
   toggleRecordingButton.classList.add('recording');
   
   try {
-    // Audio-Visualisierung starten - mit Fehlerbehandlung
+    // Start audio visualization - with error handling
     const visualizationSuccess = await setupAudioVisualization();
     if (!visualizationSuccess) {
-      console.error('Audio-Visualisierung konnte nicht initialisiert werden');
-      // Trotzdem weitermachen, aber Flag setzen, dass wir Probleme haben könnten
+      console.error('Audio visualization could not be initialized');
+      // Still proceed, but set a flag that we might have issues
       isUIFrozen = true;
     }
     
-    // Timer starten
+    // Start timer
     if (timerInterval) clearInterval(timerInterval);
     timerInterval = setInterval(updateTimer, 1000);
-    updateTimer(); // Sofort aktualisieren
+    updateTimer(); // Update immediately
     
-    // Fehler zurücksetzen
+    // Reset errors
     hideError();
   } catch (error) {
-    console.error('Fehler beim Starten der Aufnahme (UI):', error);
-    // Zur Sicherheit in einen "gefrorenen" Zustand übergehen, damit der Notfall-Reset funktioniert
+    console.error('Error starting recording (UI):', error);
+    // For safety, transition to a "frozen" state so that the emergency reset works
     isUIFrozen = true;
   }
 }
 
-// Aufnahme stoppen
+// Stop recording
 async function stopRecording() {
   recording = false;
   
-  // UI aktualisieren
+  // Update UI
   statusText.textContent = 'Transcribing';
   toggleRecordingButton.classList.remove('recording');
   
-  // Timer stoppen
+  // Stop timer
   clearInterval(timerInterval);
   
-  // Audio-Analyse stoppen
+  // Stop audio analysis
   await stopAudioAnalysis();
 }
 
-// Zurücksetzen aller UI-Elemente in den Ausgangszustand
+// Reset all UI elements to their initial state
 function resetUI() {
-  // Timer zurücksetzen
+  // Reset timer
   timer.textContent = '0:00';
   
-  // Status zurücksetzen
+  // Reset status
   statusText.textContent = 'Start Recording';
   
-  // Aufnahme-Status zurücksetzen
+  // Reset recording status
   recording = false;
   toggleRecordingButton.classList.remove('recording');
   
-  // Fehler ausblenden
+  // Hide error
   hideError();
   
-  // Statische Wellenform zeichnen
+  // Draw static waveform
   drawStaticWaveform();
 }
 
-// Fenster schließen
+// Close window
 function closeWindow() {
   window.electronAPI.closeOverlay();
 }
 
-// Aufnahme wechseln
+// Toggle recording
 async function toggleRecording() {
   try {
     const result = await window.electronAPI.toggleRecording();
@@ -424,55 +424,55 @@ async function toggleRecording() {
   }
 }
 
-// Fehlermeldung anzeigen
+// Show error message
 function showError(message) {
   errorMessage.textContent = message;
   errorMessage.classList.add('visible');
-  statusText.style.opacity = '0'; // Status-Text ausblenden, wenn Fehler angezeigt wird
+  statusText.style.opacity = '0'; // Hide status text when error is displayed
 }
 
-// Fehlermeldung ausblenden
+// Hide error message
 function hideError() {
   errorMessage.classList.remove('visible');
-  statusText.style.opacity = '1'; // Status-Text wieder einblenden
+  statusText.style.opacity = '1'; // Show status text again
 }
 
-// Event-Listener
+// Event listeners
 toggleRecordingButton.addEventListener('click', toggleRecording);
 
-// Abbrechen-Button stoppt die Aufnahme, aber schließt das Fenster NICHT
+// Cancel button stops the recording but does NOT close the window
 closeButton.addEventListener('click', async () => {
-  console.log('[DEBUG] Abbrechen-Button geklickt');
+  console.log('[DEBUG] Cancel button clicked');
   
   try {
-    // Status sofort ändern und UI aktualisieren
+    // Immediately change status and update UI
     recording = false;
-    statusText.textContent = 'Abgebrochen';
-    console.log('[DEBUG] Status auf "Abgebrochen" gesetzt');
+    statusText.textContent = 'Canceled';
+    console.log('[DEBUG] Status set to "Canceled"');
     
-    // Sofort Timer und Visualisierung stoppen
+    // Immediately stop timer and visualization
     if (timerInterval) {
       clearInterval(timerInterval);
       timerInterval = null;
-      console.log('[DEBUG] Timer gestoppt');
+      console.log('[DEBUG] Timer stopped');
     }
     
-    // Alle Timer und Animationen stoppen
+    // Stop all timers and animations
     stopVisualizationTimer();
     if (animationFrame) {
       cancelAnimationFrame(animationFrame);
       animationFrame = null;
-      console.log('[DEBUG] Animationen gestoppt');
+      console.log('[DEBUG] Animations stopped');
     }
     
-    // Audio-Analyse komplett beenden
+    // Completely stop audio analysis
     if (audioStream) {
       try {
         const tracks = audioStream.getTracks();
         tracks.forEach(track => track.stop());
-        console.log('[DEBUG] Audio-Tracks gestoppt: ' + tracks.length);
+        console.log('[DEBUG] Audio tracks stopped: ' + tracks.length);
       } catch (e) {
-        console.error('[DEBUG] Fehler beim Stoppen der Audio-Tracks:', e);
+        console.error('[DEBUG] Error stopping audio tracks:', e);
       }
       audioStream = null;
     }
@@ -480,9 +480,9 @@ closeButton.addEventListener('click', async () => {
     if (audioContext) {
       try {
         await audioContext.close();
-        console.log('[DEBUG] AudioContext geschlossen');
+        console.log('[DEBUG] AudioContext closed');
       } catch (e) {
-        console.error('[DEBUG] Fehler beim Schließen des AudioContext:', e);
+        console.error('[DEBUG] Error closing AudioContext:', e);
       }
       audioContext = null;
     }
@@ -490,38 +490,38 @@ closeButton.addEventListener('click', async () => {
     microphone = null;
     analyser = null;
     
-    // UI zurücksetzen
+    // Reset UI
     drawStaticWaveform();
     toggleRecordingButton.classList.remove('recording');
     timer.textContent = '0:00';
     
-    // Den Abbruch an den Hauptprozess senden
-    console.log('[DEBUG] Sende cancelRecording an Hauptprozess');
+    // Send cancellation to the main process
+    console.log('[DEBUG] Sending cancelRecording to main process');
     const result = await window.electronAPI.cancelRecording();
-    console.log('[DEBUG] Ergebnis von cancelRecording:', result);
+    console.log('[DEBUG] Result from cancelRecording:', result);
     
-    // Nach kurzer Zeit UI zurücksetzen, aber Fenster NICHT schließen
+    // Reset UI after a short time, but do NOT close the window
     setTimeout(() => {
       resetUI();
-      console.log('[DEBUG] UI zurückgesetzt nach Abbruch');
+      console.log('[DEBUG] UI reset after cancellation');
     }, 1000);
   } catch (error) {
-    console.error('[DEBUG] Fehler beim Abbrechen:', error);
-    // Trotz Fehler UI zurücksetzen
+    console.error('[DEBUG] Error during cancellation:', error);
+    // Reset UI despite error
     resetUI();
   }
 });
 
-// Apple-Style X-Button schließt das Fenster
+// Apple-style X button closes the window
 closeWindowButton.addEventListener('click', async () => {
-  // Aufnahme stoppen, falls aktiv
+  // Stop recording if active
   if (recording) {
     try {
-      // UI sofort aktualisieren
+      // Immediately update UI
       recording = false;
-      statusText.textContent = 'Beendet';
+      statusText.textContent = 'Stopped';
       
-      // Alle Audio-Ressourcen sofort freigeben
+      // Immediately release all audio resources
       if (timerInterval) {
         clearInterval(timerInterval);
         timerInterval = null;
@@ -533,7 +533,7 @@ closeWindowButton.addEventListener('click', async () => {
         animationFrame = null;
       }
       
-      // Audio-Stream stoppen
+      // Stop audio stream
       if (audioStream) {
         const tracks = audioStream.getTracks();
         tracks.forEach(track => track.stop());
@@ -550,33 +550,33 @@ closeWindowButton.addEventListener('click', async () => {
       microphone = null;
       analyser = null;
       
-      // Erst jetzt den Hauptprozess benachrichtigen
+      // Notify main process
       await window.electronAPI.cancelRecording();
       
-      // Direkt schließen
+      // Close directly
       window.electronAPI.closeOverlay();
     } catch (error) {
-      console.error('Fehler beim Schließen mit X:', error);
-      // Im Fehlerfall trotzdem schließen
+      console.error('Error closing with X:', error);
+      // Close despite error
       window.electronAPI.closeOverlay();
     }
   } else {
-    // Wenn keine Aufnahme läuft, einfach schließen
+    // If no recording is active, just close
     window.electronAPI.closeOverlay();
   }
 });
 
-// ESC-Taste zum Schließen des Fensters
+// ESC key to close the window
 document.addEventListener('keydown', (event) => {
-  console.log('Taste gedrückt:', event.key); // Debug-Log hinzugefügt
+  console.log('Key pressed:', event.key); // Added debug log
   if (event.key === 'Escape') {
-    console.log('ESC wurde gedrückt! Versuche Fenster zu schließen...'); // Debug-Log
-    // Aufnahme stoppen, falls aktiv
+    console.log('ESC was pressed! Attempting to close window...'); // Debug log
+    // Stop recording if active
     if (recording) {
       window.electronAPI.cancelRecording().then(() => {
         closeWindow();
       }).catch(error => {
-        console.error('Fehler beim Beenden der Aufnahme:', error);
+        console.error('Error stopping recording:', error);
         closeWindow();
       });
     } else {
@@ -585,7 +585,7 @@ document.addEventListener('keydown', (event) => {
   }
 });
 
-// Event-Listener für Aufnahme-Events
+// Event listeners for recording events
 window.electronAPI.onRecordingStarted(() => {
   startRecording();
 });
@@ -595,82 +595,82 @@ window.electronAPI.onRecordingStopped(() => {
 });
 
 window.electronAPI.onCancelRecordingDirect(() => {
-  console.log('[DEBUG] cancel-recording-direct Event empfangen');
+  console.log('[DEBUG] cancel-recording-direct event received');
   
-  // Sofortige Maßnahmen zur Fehlerbehebung
+  // Immediate measures for error handling
   try {
-    // Status sofort hart zurücksetzen
+    // Immediately reset status
     recording = false;
     
-    // Timer hart stoppen
+    // Hard stop timer
     if (timerInterval) {
       clearInterval(timerInterval);
       timerInterval = null;
-      console.log('[DEBUG] Timer im cancel-direct gestoppt');
+      console.log('[DEBUG] Timer stopped in cancel-direct');
     }
     
-    // Animation sofort beenden
+    // Immediately stop animation
     if (animationFrame) {
       cancelAnimationFrame(animationFrame);
       animationFrame = null;
-      console.log('[DEBUG] Animation im cancel-direct gestoppt');
+      console.log('[DEBUG] Animation stopped in cancel-direct');
     }
     
-    // Visualisierungstimer sofort stoppen
+    // Immediately stop visualization timer
     stopVisualizationTimer();
-    console.log('[DEBUG] Visualisierungstimer im cancel-direct gestoppt');
+    console.log('[DEBUG] Visualization timer stopped in cancel-direct');
     
-    // Audiostream direkt beenden
+    // Directly stop audio stream
     if (audioStream) {
       const tracks = audioStream.getTracks();
       tracks.forEach(track => {
         try {
           track.stop();
-          console.log('[DEBUG] Audiotrack im cancel-direct gestoppt');
+          console.log('[DEBUG] Audio track stopped in cancel-direct');
         } catch (e) {
-          console.error('[DEBUG] Fehler beim Stoppen des Audiotracks:', e);
+          console.error('[DEBUG] Error stopping audio track:', e);
         }
       });
       audioStream = null;
     }
     
-    // Audio-Kontext direkt schließen, ohne auf Promise zu warten
+    // Directly close audio context without waiting for promise
     if (audioContext) {
       try {
         audioContext.close();
-        console.log('[DEBUG] AudioContext im cancel-direct geschlossen');
+        console.log('[DEBUG] AudioContext closed in cancel-direct');
       } catch (e) {
-        console.error('[DEBUG] Fehler beim Schließen des AudioContext:', e);
+        console.error('[DEBUG] Error closing AudioContext:', e);
       }
       audioContext = null;
     }
     
-    // Andere Audio-Referenzen löschen
+    // Clear other audio references
     microphone = null;
     analyser = null;
     dataArray = null;
     
-    // Visualisierungsverlauf löschen
+    // Clear visualization history
     visualizationHistory.length = 0;
     
-    // Statisches Muster neu zeichnen
+    // Redraw static pattern
     drawStaticWaveform();
     
-    // UI-Status aktualisieren
+    // Update UI status
     statusText.textContent = 'Start Recording';
     toggleRecordingButton.classList.remove('recording');
     timer.textContent = '0:00';
     
-    console.log('[DEBUG] UI im cancel-direct vollständig zurückgesetzt');
+    console.log('[DEBUG] UI fully reset in cancel-direct');
     
-    // Nach kurzer Verzögerung UI vollständig zurücksetzen
+    // Fully reset UI after a short delay
     setTimeout(() => {
       resetUI();
-      console.log('[DEBUG] resetUI nach cancel-direct aufgerufen');
+      console.log('[DEBUG] resetUI called after cancel-direct');
     }, 500);
   } catch (error) {
-    console.error('[DEBUG] Fehler im cancel-direct Handler:', error);
-    // Trotz Fehler UI zurücksetzen
+    console.error('[DEBUG] Error in cancel-direct handler:', error);
+    // Reset UI despite error
     resetUI();
   }
 });
@@ -682,7 +682,7 @@ window.electronAPI.onTranscriptionStarted(() => {
 window.electronAPI.onTranscriptionCompleted(() => {
   statusText.textContent = 'Complete';
   
-  // Status nach kurzer Zeit zurücksetzen
+  // Reset status after a short time
   setTimeout(() => {
     resetUI();
   }, 2000);
@@ -692,7 +692,7 @@ window.electronAPI.onRecordingError((data) => {
   stopRecording();
   showError(data.message || 'Recording error');
   
-  // Nach kurzer Zeit in den Ausgangszustand zurückkehren
+  // Return to initial state after a short time
   setTimeout(() => {
     resetUI();
   }, 3000);
@@ -702,24 +702,24 @@ window.electronAPI.onTranscriptionError((data) => {
   statusText.textContent = '';
   showError(data.message || 'Transcription error');
   
-  // Nach kurzer Zeit in den Ausgangszustand zurückkehren
+  // Return to initial state after a short time
   setTimeout(() => {
     resetUI();
   }, 3000);
 });
 
-// Text-Einfügung
+// Text insertion
 window.electronAPI.onTextInserted(() => {
   statusText.textContent = 'Text inserted';
   
-  // Status nach kurzer Zeit zurücksetzen
+  // Reset status after a short time
   setTimeout(() => {
     resetUI();
   }, 2000);
 });
 
-// Visualisierung initialisieren
+// Initialize visualization
 initVisualizer();
 
-// Initialen Timer-Wert setzen und Status anzeigen
+// Set initial timer value and display status
 resetUI();
