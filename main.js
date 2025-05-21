@@ -72,7 +72,7 @@ function createMainWindow() {
       contextIsolation: true,
       nodeIntegration: false
     },
-    icon: path.join(__dirname, 'assets/SpeakNote_logo.png'),
+    icon: path.join(__dirname, 'assets/SpeakNote_dock_logo.png'),
     show: false, // Initially hidden, opened via tray or dock
     skipTaskbar: true, // Don't show in taskbar
   });
@@ -166,13 +166,13 @@ function createOnboardingWindow() {
 function createTray() {
   try {
     // Path to tray icon
-    const iconPath = path.join(__dirname, 'assets/SpeakNote_logo_menu.png');
+    const iconPath = path.join(__dirname, 'assets/IconTemplate.png');
     
     // Check if the file exists
     if (!fs.existsSync(iconPath)) {
       console.error(`Tray icon not found: ${iconPath}`);
       // Fallback to a standard icon
-      tray = new Tray(path.join(__dirname, 'assets/SpeakNote_logo.png'));
+      tray = new Tray(path.join(__dirname, 'assets/SpeakNote_dock_logo.png'));
     } else {
       // Template image for dark/light appearance in macOS
       tray = new Tray(iconPath);
