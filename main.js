@@ -234,72 +234,164 @@ async function getAudioDevices() {
 
 // Capture active application before opening the overlay
 async function captureActiveApplication() {
-  return new Promise((resolve) => {
-    // Enhanced AppleScript version that tries to identify the correct active app and not Electron/SpeakNote itself
-    const script = `
-      tell application "System Events"
-        set frontApp to name of first application process whose frontmost is true
-        
-        if frontApp is "Electron" or frontApp contains "SpeakNote" then
-          # We detected our own app, try to find another active app
-          tell application "System Events"
-            set allVisibleProcesses to name of every process whose visible is true
-          end tell
-          
-          # Filter Electron/SpeakNote from the list
-          set filteredApps to {}
-          repeat with appName in allVisibleProcesses
-            if appName is not "Electron" and appName does not contain "SpeakNote" and appName is not "Finder" then
-              set end of filteredApps to appName
-            end if
-          end repeat
-          
-          # If other apps were found, use the first one
-          if length of filteredApps > 0 then
-            return first item of filteredApps
-          else
-            # Fallback to TextEdit if nothing better was found
-            return "TextEdit"
-          end if
-        else
-          # Another app is already active - use it
-          return frontApp
-        end if
-      end tell
-    `;
-    
-    exec(`osascript -e '${script}'`, (error, stdout, stderr) => {
-      if (error) {
-        console.error('Error determining active application:', error);
-        // Fallback to TextEdit if nothing was found
-        lastActiveApp = "TextEdit";
-        
-        // Open TextEdit if it's not already running
-        exec('open -a TextEdit', (openError) => {
-          if (openError) {
-            console.error('Error opening TextEdit:', openError);
+  return new Promise(async (resolve) => {
+    try {
+      // Write the AppleScript to a temporary file rather than injecting it into shell command
+      // This avoids escaping issues with complex scripts
+      const tmpDir = app.getPath('temp');
+      const tmpScriptPath = path.join(tmpDir, `SpeakNote_get_app_${Date.now()}.scpt`);
+      
+      const appDetectionScript = `
+tell application "System Events"
+  set frontApp to name of first application process whose frontmost is true
+  return frontApp
+end tell
+`;
+      
+      // Write the script to a file
+      await writeFileAsync(tmpScriptPath, appDetectionScript);
+      
+      // Execute the script file
+      const frontApp = await new Promise((innerResolve, innerReject) => {
+        exec(`osascript "${tmpScriptPath}"`, (err, stdout, stderr) => {
+          try { 
+            fs.unlinkSync(tmpScriptPath); 
+          } catch (e) {
+            console.log('[DEBUG] Could not delete temp script:', e);
           }
-          resolve(lastActiveApp);
+          
+          if (err) {
+            console.error('[DEBUG] Error in app detection script:', err);
+            innerReject(err);
+          } else {
+            innerResolve(stdout.trim());
+          }
+        });
+      });
+      
+      console.log('[DEBUG] Frontmost application detected:', frontApp);
+      
+      // Handle Finder case (check if desktop or window)
+      if (frontApp === "Finder") {
+        // Use a separate script file for counting Finder windows
+        const finderScriptPath = path.join(tmpDir, `SpeakNote_finder_${Date.now()}.scpt`);
+        const finderScript = `
+tell application "Finder"
+  return count of windows
+end tell
+`;
+        
+        await writeFileAsync(finderScriptPath, finderScript);
+        
+        const windowCount = await new Promise((innerResolve, innerReject) => {
+          exec(`osascript "${finderScriptPath}"`, (err, stdout, stderr) => {
+            try { 
+              fs.unlinkSync(finderScriptPath); 
+            } catch (e) {
+              console.log('[DEBUG] Could not delete temp script:', e);
+            }
+            
+            if (err) {
+              console.error('[DEBUG] Error counting Finder windows:', err);
+              innerReject(err);
+            } else {
+              innerResolve(parseInt(stdout.trim(), 10));
+            }
+          });
+        });
+        
+        if (windowCount > 0) {
+          // Finder window is active, not desktop
+          lastActiveApp = "Finder";
+          console.log('[DEBUG] Finder window is active');
+        } else {
+          // Desktop is active (Finder with no windows)
+          lastActiveApp = "";
+          console.log('[DEBUG] Desktop is active (Finder with no windows)');
+          resolve({ 
+            success: false, 
+            error: 'Desktop is active. Please click in a text field of an application first.',
+            isDesktop: true
+          });
+          return;
+        }
+      } 
+      // Handle SpeakNote or Electron case
+      else if (frontApp === "Electron" || frontApp.includes("SpeakNote")) {
+        console.log('[DEBUG] SpeakNote itself is frontmost, looking for alternative apps');
+        
+        // Use a separate script file for detecting visible apps
+        const visibleAppsScriptPath = path.join(tmpDir, `SpeakNote_visible_${Date.now()}.scpt`);
+        const visibleAppsScript = `
+tell application "System Events"
+  set visibleProcesses to name of every process whose visible is true
+  return visibleProcesses
+end tell
+`;
+        
+        await writeFileAsync(visibleAppsScriptPath, visibleAppsScript);
+        
+        const visibleAppsOutput = await new Promise((innerResolve, innerReject) => {
+          exec(`osascript "${visibleAppsScriptPath}"`, (err, stdout, stderr) => {
+            try { 
+              fs.unlinkSync(visibleAppsScriptPath); 
+            } catch (e) {
+              console.log('[DEBUG] Could not delete temp script:', e);
+            }
+            
+            if (err) {
+              console.error('[DEBUG] Error getting visible apps:', err);
+              innerReject(err);
+            } else {
+              innerResolve(stdout.trim());
+            }
+          });
+        });
+        
+        // Parse the comma-separated list of apps
+        const visibleApps = visibleAppsOutput.split(', ');
+        console.log('[DEBUG] Visible apps:', visibleApps);
+        
+        // Find first non-SpeakNote, non-Electron, non-Finder app
+        const otherApp = visibleApps.find(app => 
+          app !== "Electron" && 
+          !app.includes("SpeakNote") && 
+          app !== "Finder"
+        );
+        
+        if (otherApp) {
+          lastActiveApp = otherApp;
+          console.log('[DEBUG] Found alternative active application:', otherApp);
+        } else {
+          lastActiveApp = "";
+          console.log('[DEBUG] No suitable alternative application found');
+          resolve({ 
+            success: false, 
+            error: 'No target application detected. Try clicking on a text field first.'
+          });
+          return;
+        }
+      } else {
+        // Another app is frontmost
+        lastActiveApp = frontApp;
+      }
+      
+      // Final check before reporting success
+      if (!lastActiveApp || lastActiveApp === "") {
+        console.log('[DEBUG] No suitable application detected for text insertion');
+        resolve({ 
+          success: false, 
+          error: 'No target application detected. Try clicking on a text field first.' 
         });
       } else {
-        lastActiveApp = stdout.trim();
-        
-        // If the detected app is Electron or empty, use TextEdit as fallback
-        if (lastActiveApp === "Electron" || lastActiveApp.includes("SpeakNote") || !lastActiveApp) {
-          lastActiveApp = "TextEdit";
-          
-          // Open TextEdit if it's not already running
-          exec('open -a TextEdit', (openError) => {
-            if (openError) {
-              console.error('Error opening TextEdit:', openError);
-            }
-            resolve(lastActiveApp);
-          });
-        } else {
-          resolve(lastActiveApp);
-        }
+        console.log('[DEBUG] Active application captured:', lastActiveApp);
+        resolve({ success: true, app: lastActiveApp });
       }
-    });
+      
+    } catch (error) {
+      console.error('Error determining active application:', error);
+      resolve({ success: false, error: 'Could not detect active application' });
+    }
   });
 }
 
@@ -343,7 +435,40 @@ async function startRecording() {
   }
   
   // Capture active application before opening the overlay
-  await captureActiveApplication();
+  const captureResult = await captureActiveApplication();
+  
+  // Always log the active application attempt when F5 is pressed
+  if (captureResult.success) {
+    console.log('[DEBUG] Active application captured:', captureResult.app);
+  } else {
+    // Check if this was a Finder/desktop case
+    if (captureResult.error && captureResult.error.includes("Desktop is active")) {
+      console.log('[DEBUG] Desktop is active - no suitable text target available');
+    } else {
+      console.log('[DEBUG] Failed to capture active application:', captureResult.error);
+    }
+  }
+  
+  // Check if active application capture was successful
+  if (!captureResult.success) {
+    console.log('[DEBUG] No suitable target application found:', captureResult.error);
+    // Create or ensure overlay window exists
+    if (!overlayWindow || overlayWindow.isDestroyed()) {
+      createOverlayWindow();
+    }
+    
+    // Show error in overlay with appropriate styling based on the type of error
+    let errorMessage = captureResult.error || 'No target application found for text insertion.';
+    
+    // Add desktop-specific instructions if applicable
+    if (captureResult.isDesktop) {
+      errorMessage = `${errorMessage} The desktop cannot receive text input.`;
+    }
+    
+    overlayWindow.webContents.send('recording-error', { message: errorMessage });
+    overlayWindow.show();
+    return;
+  }
   
   // Check if an API key is configured
   const apiKey = store.get('apiKey', '');
@@ -433,6 +558,24 @@ async function startRecording() {
 async function stopRecording() {
   if (!recording) return;
   
+  // If there's no lastActiveApp at this point, the recording can't be successful
+  if (!lastActiveApp) {
+    console.error('Recording stopped with no target application');
+    if (overlayWindow && !overlayWindow.isDestroyed()) {
+      overlayWindow.webContents.send('transcription-error', { 
+        message: 'No target application available for text insertion.'
+      });
+      // Hide overlay after a delay
+      setTimeout(() => {
+        if (overlayWindow && !overlayWindow.isDestroyed()) {
+          overlayWindow.hide();
+        }
+      }, 2000);
+    }
+    recording = false;
+    return;
+  }
+  
   recording = false;
   
   // Check minimum recording time (1000ms = 1 second)
@@ -497,6 +640,9 @@ async function stopRecording() {
       // Transcription successful - check again if window still exists
       if (overlayWindow && !overlayWindow.isDestroyed()) {
         overlayWindow.webContents.send('transcription-completed', { text: transcribedText });
+        
+        // Log the target application before inserting text
+        console.log('[DEBUG] Transcription complete, will insert text into target application:', lastActiveApp);
         
         // Insert text at cursor position
         await insertTextAtCursor(transcribedText);
@@ -639,6 +785,8 @@ async function cancelRecordingProcess() {
 
 // Insert text at cursor position (macOS-specific)
 async function insertTextAtCursor(text) {
+  console.log('[DEBUG] insertTextAtCursor called');
+  
   // Check if an active application was saved
   if (!lastActiveApp) {
     console.error('No active application found');
@@ -650,55 +798,114 @@ async function insertTextAtCursor(text) {
     return;
   }
   
-  // Safe variant: Write text to a temporary file and then read it
-  const tempTextFilePath = path.join(app.getPath('temp'), `SpeakNote_text_${Date.now()}.txt`);
+  console.log('[DEBUG] Attempting to insert text into application:', lastActiveApp);
+  
+  const tmpDir = app.getPath('temp');
   
   try {
-    // Save text directly as a file instead of trying to escape it in AppleScript
-    await writeFileAsync(tempTextFilePath, text);
-    
-    // Improve AppleScript to handle possible lists of application names
-    let appName = lastActiveApp;
+    // Sanitize app name to ensure proper functioning
+    let appName = lastActiveApp.trim();
     
     // If lastActiveApp contains multiple applications, take only the first one
     if (appName.includes(',')) {
       appName = appName.split(',')[0].trim();
-      console.log(`Multiple applications detected, using the first one: ${appName}`);
+      console.log(`[DEBUG] Multiple applications detected, using the first one: ${appName}`);
     }
     
-    // Remove any "item X of" expressions
+    // Remove any "item X of" expressions which can come from AppleScript lists
     if (appName.includes('item')) {
       appName = appName.replace(/item \d+ of /g, '').trim();
-      console.log(`"item X of" removed, using: ${appName}`);
+      console.log(`[DEBUG] "item X of" removed, using: ${appName}`);
     }
+    
+    // First check if the target application is still running
+    // Create a script file instead of inline script
+    const checkAppScriptPath = path.join(tmpDir, `SpeakNote_check_app_${Date.now()}.scpt`);
+    
+    // Create app check script
+    const checkAppScript = `
+try
+  tell application "${appName}" to get name
+  return true
+on error
+  return false
+end try
+`;
+    
+    await writeFileAsync(checkAppScriptPath, checkAppScript);
+    
+    const appRunningResult = await new Promise((resolve, reject) => {
+      exec(`osascript "${checkAppScriptPath}"`, (error, stdout, stderr) => {
+        try { 
+          fs.unlinkSync(checkAppScriptPath); 
+        } catch (e) {
+          console.log('[DEBUG] Could not delete temp script:', e);
+        }
+        
+        if (error || stderr) {
+          console.error('[DEBUG] Error checking if app is running:', error || stderr);
+          reject(false);
+        } else {
+          // AppleScript returns "true" or "false" as a string
+          resolve(stdout.trim() === "true");
+        }
+      });
+    });
+    
+    if (!appRunningResult) {
+      console.error(`[DEBUG] Target application "${appName}" is no longer running`);
+      if (overlayWindow && !overlayWindow.isDestroyed()) {
+        overlayWindow.webContents.send('transcription-error', { 
+          message: `Target application "${appName}" is no longer available. Text could not be inserted.` 
+        });
+      }
+      return;
+    }
+    
+    // Safe variant: Write text to a temporary file and then read it
+    const tempTextFilePath = path.join(tmpDir, `SpeakNote_text_${Date.now()}.txt`);
+    
+    // Save text directly as a file instead of trying to escape it
+    await writeFileAsync(tempTextFilePath, text);
+    
+    // Create clipboard insertion script file
+    const clipboardScriptPath = path.join(tmpDir, `SpeakNote_insert_${Date.now()}.scpt`);
     
     // Clipboard-based method for inserting text
     const clipboardScript = `
-      set theText to (do shell script "cat '${tempTextFilePath}'")
-      set the clipboard to theText
-      
-      tell application "${appName}"
-        activate
-        delay 0.5
-      end tell
-      
-      tell application "System Events"
-        keystroke "v" using {command down}
-      end tell
-    `;
+-- Read text from file
+set theText to (do shell script "cat '${tempTextFilePath}'")
+-- Put text on clipboard
+set the clipboard to theText
+
+-- Activate target app
+tell application "${appName}"
+  activate
+  delay 0.3
+end tell
+
+-- Paste text
+tell application "System Events"
+  keystroke "v" using {command down}
+end tell
+`;
     
-    const tmpScriptPath = path.join(app.getPath('temp'), `SpeakNote_script_${Date.now()}.scpt`);
-    await writeFileAsync(tmpScriptPath, clipboardScript);
+    await writeFileAsync(clipboardScriptPath, clipboardScript);
     
     try {
       await new Promise((resolve, reject) => {
-        exec(`osascript "${tmpScriptPath}"`, (error, stdout, stderr) => {
-          try { fs.unlinkSync(tmpScriptPath); } catch (e) {}
+        exec(`osascript "${clipboardScriptPath}"`, (error, stdout, stderr) => {
+          try { 
+            fs.unlinkSync(clipboardScriptPath); 
+          } catch (e) {
+            console.log('[DEBUG] Could not delete temp script:', e);
+          }
           
           if (error || stderr) {
-            console.error('Error inserting text with clipboard:', error || stderr);
+            console.error('[DEBUG] Error inserting text with clipboard:', error || stderr);
             reject(error || new Error(stderr));
           } else {
+            console.log('[DEBUG] Text successfully inserted into', appName);
             resolve();
           }
         });
@@ -708,8 +915,7 @@ async function insertTextAtCursor(text) {
         overlayWindow.webContents.send('text-inserted');
       }
     } catch (error) {
-      console.error('Text insertion failed:', error);
-      // No fallback method used anymore, as requested
+      console.error('[DEBUG] Text insertion failed:', error);
       if (overlayWindow && !overlayWindow.isDestroyed()) {
         overlayWindow.webContents.send('transcription-error', { 
           message: 'Text could not be inserted: ' + error.message
@@ -717,20 +923,21 @@ async function insertTextAtCursor(text) {
       }
     }
   } catch (error) {
-    console.error('Error writing temporary text file:', error);
+    console.error('[DEBUG] Error in text insertion process:', error);
     if (overlayWindow && !overlayWindow.isDestroyed()) {
       overlayWindow.webContents.send('transcription-error', { 
-        message: 'Text could not be processed.' 
+        message: 'Text could not be processed: ' + error.message 
       });
     }
   } finally {
     // Clean up temporary text file
+    const tempTextFilePath = path.join(tmpDir, `SpeakNote_text_${Date.now()}.txt`);
     try {
       if (fs.existsSync(tempTextFilePath)) {
         fs.unlinkSync(tempTextFilePath);
       }
     } catch (e) {
-      console.error('Could not delete temporary text file:', e);
+      console.error('[DEBUG] Could not delete temporary text file:', e);
     }
   }
 }
@@ -980,12 +1187,15 @@ app.whenReady().then(() => {
 
     lastF5Time = now;
     isProcessing = true;
+    console.log('[DEBUG] F5 key pressed, processing action...');
 
     try {
       // Status check and corresponding action
       if (recording) {
+        console.log('[DEBUG] F5 pressed while recording, stopping recording...');
         await stopRecording();
       } else {
+        console.log('[DEBUG] F5 pressed to start new recording, will capture active application...');
         await startRecording();
       }
     } catch (error) {
@@ -1018,11 +1228,14 @@ app.whenReady().then(() => {
       
       lastF5Time = now;
       isProcessing = true;
+      console.log('[DEBUG] CommandOrControl+5 key pressed, processing action...');
       
       try {
         if (recording) {
+          console.log('[DEBUG] CommandOrControl+5 pressed while recording, stopping recording...');
           await stopRecording();
         } else {
+          console.log('[DEBUG] CommandOrControl+5 pressed to start new recording, will capture active application...');
           await startRecording();
         }
       } catch (error) {

@@ -9,11 +9,11 @@ The app runs in the background, is accessible via the menu bar, and helps you qu
 
 ## Features
 
+- **Direct Insertion:** Transcribed text is automatically inserted at the cursor position of the initial active window. While recording, you can freely switch to other windows or applications.
 - **Global Hotkey:** F5 starts/stops recording (replacing the default macOS dictation function)
 - **Floating Overlay:** Displays recording status with audio visualization
 - **API Integration:** Supports OpenAI Whisper for speech recognition
 - **Settings:** Configure API key and select audio input device
-- **Direct Insertion:** Transcribed text is automatically inserted at the current cursor position
 
 ## Installation
 
