@@ -7,6 +7,9 @@ const closeWindowButton = document.getElementById('closeWindowButton');
 const errorMessage = document.getElementById('errorMessage');
 const audioVisualizer = document.getElementById('audioVisualizer');
 
+// Set a fixed height for the visualizer
+audioVisualizer.style.height = '23px';
+
 // Visualization context
 const ctx = audioVisualizer.getContext('2d');
 let recording = false;
@@ -39,7 +42,7 @@ function initVisualizer() {
   function resizeCanvas() {
     const container = audioVisualizer.parentElement;
     audioVisualizer.width = container.clientWidth;
-    audioVisualizer.height = container.clientHeight;
+    audioVisualizer.height = 53;
   }
   
   resizeCanvas();
@@ -207,7 +210,7 @@ function animateMicrophone() {
   // Get frequency data
   analyser.getByteFrequencyData(dataArray);
   
-  // Calculate average amplitude (simplified)
+  // Calculate average amplitude
   let sum = 0;
   const sampleSize = Math.min(bufferLength, 32); // We only use a part of the spectrum
   for (let i = 0; i < sampleSize; i++) {

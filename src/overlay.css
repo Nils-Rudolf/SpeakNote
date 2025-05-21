@@ -142,7 +142,7 @@ body {
 
 #audioVisualizer {
   width: 100%;
-  height: 40px;
+  height: 53px !important;
 }
 
 .controls {
