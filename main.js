@@ -1,4 +1,4 @@
-const { app, BrowserWindow, globalShortcut, ipcMain, Menu, Tray, screen } = require('electron');
+const { app, BrowserWindow, globalShortcut, ipcMain, Menu, Tray, screen, dialog } = require('electron');
 const path = require('path');
 const { exec } = require('child_process');
 const Store = require('electron-store');
@@ -954,29 +954,33 @@ app.whenReady().then(() => {
   if (!onboardingCompleted) {
     createOnboardingWindow();
   }
+
+  let f5ReRegistrationFailures = 0;
+  let f5NotificationShown = false;
+  const F5_FAILURE_THRESHOLD = 3; // Threshold for showing the notification
   
   // Variable to monitor rapid repetitions of F5
   let lastF5Time = 0;
   let isProcessing = false;
-  
-  // Register F5 as a global shortcut
-  const success = globalShortcut.register('f5', async () => {
+
+  // Refactored F5 Shortcut Handler
+  async function handleF5Shortcut() {
     // Debouncing mechanism: Filter calls that are too fast (within 800ms)
     const now = Date.now();
     if (now - lastF5Time < 800) {
       console.log('F5 was pressed too quickly in succession, ignoring...');
       return;
     }
-    
+
     // Processing is already running - block
     if (isProcessing) {
       console.log('An F5 action is already in progress, ignoring...');
       return;
     }
-    
+
     lastF5Time = now;
     isProcessing = true;
-    
+
     try {
       // Status check and corresponding action
       if (recording) {
@@ -992,11 +996,19 @@ app.whenReady().then(() => {
         isProcessing = false;
       }, 500);
     }
-  });
+  }
+  
+  // Register F5 as a global shortcut
+  const success = globalShortcut.register('f5', handleF5Shortcut);
   
   if (!success) {
     console.error('Global shortcut F5 could not be registered');
     // Try alternative shortcut
+    // Note: The alternative shortcut also uses lastF5Time and isProcessing.
+    // If F5 fails, this alternative is registered. The periodic check below
+    // specifically checks for 'f5'. If 'f5' registration fails and the alternative
+    // is used, the periodic check will keep trying to register 'f5'.
+    // This behavior is acceptable as per current requirements.
     const altSuccess = globalShortcut.register('CommandOrControl+5', async () => {
       // Same debouncing mechanism as for F5
       const now = Date.now();
@@ -1028,6 +1040,44 @@ app.whenReady().then(() => {
   } else {
     console.log('Global shortcut F5 successfully registered');
   }
+
+  // Periodic Re-registration for F5
+  setInterval(() => {
+    if (!globalShortcut.isRegistered('f5')) {
+      console.log('F5 shortcut is not registered. Attempting to re-register...');
+      const reRegisterSuccess = globalShortcut.register('f5', handleF5Shortcut);
+      if (reRegisterSuccess) {
+        console.log('F5 shortcut re-registered successfully.');
+        f5ReRegistrationFailures = 0; // Reset counter on success
+        // f5NotificationShown = false; // Optional: reset notification flag if you want it to show again later
+      } else {
+        f5ReRegistrationFailures++;
+        console.log(`Failed to re-register F5 shortcut. It might be in use by another application. Consecutive failures: ${f5ReRegistrationFailures}`);
+        if (f5ReRegistrationFailures >= F5_FAILURE_THRESHOLD && !f5NotificationShown) {
+          // Check if mainWindow is available and not destroyed
+          const currentWindow = BrowserWindow.getFocusedWindow() || mainWindow;
+          dialog.showMessageBox(currentWindow, { // Pass null if no window is reliably available
+            type: 'warning',
+            title: 'Shortcut Issue',
+            message: 'SpeakNote is having trouble registering the F5 shortcut. This might be due to a conflict with another application or system feature (like Apple Dictation on macOS).',
+            detail: 'You can try checking your system shortcut settings. The alternative shortcut CommandOrControl+5 (or Ctrl+5 on Windows/Linux) should still be available if it was registered successfully.',
+            buttons: ['OK']
+          }).catch(err => {
+              console.error('Error displaying F5 failure dialog:', err);
+          });
+          f5NotificationShown = true;
+          console.log('F5 registration failure notification shown to user.');
+        }
+      }
+    } else {
+      // If F5 is registered, ensure failure count is reset.
+      // This handles cases where it might have been registered by something other than our re-try logic.
+      if (f5ReRegistrationFailures > 0) {
+          console.log('F5 shortcut is now registered. Resetting failure count.');
+          f5ReRegistrationFailures = 0;
+      }
+    }
+  }, 10000); // Check every 10 seconds
   
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
