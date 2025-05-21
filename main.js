@@ -216,18 +216,62 @@ function createTray() {
 // Get available audio input devices
 async function getAudioDevices() {
   return new Promise((resolve, reject) => {
-    exec('system_profiler SPAudioDataType | grep "Input"', (error, stdout, stderr) => {
+    exec('system_profiler SPAudioDataType -json', (error, stdout, stderr) => {
       if (error) {
         console.error('Error retrieving audio devices:', error);
         reject(error);
         return;
       }
       
-      // Simple parsing logic for macOS audio devices
-      const lines = stdout.trim().split('\n');
-      const devices = lines.map(line => line.trim().replace('Input: ', '')).filter(device => device);
-      
-      resolve(devices);
+      try {
+        const parsedData = JSON.parse(stdout);
+        const audioDevices = [];
+        
+        // Extract device names from the JSON response
+        if (parsedData && parsedData.SPAudioDataType) {
+          parsedData.SPAudioDataType.forEach(device => {
+            if (device['_name'] && device['coreaudio_device'] && Array.isArray(device['coreaudio_device'])) {
+              device['coreaudio_device'].forEach(coreDevice => {
+                if (coreDevice['input_channels'] && coreDevice['input_channels'] > 0) {
+                  // Add device name without technical details
+                  const deviceName = coreDevice['_name'].replace(/\s*\([^)]*\)\s*/g, '').trim();
+                  if (deviceName && !audioDevices.includes(deviceName)) {
+                    audioDevices.push(deviceName);
+                  }
+                }
+              });
+            }
+          });
+        }
+        
+        // If no devices found, try fallback method
+        if (audioDevices.length === 0) {
+          exec('system_profiler SPAudioDataType | grep "Input Source:"', (error, stdout, stderr) => {
+            if (error) {
+              console.error('Error in fallback audio device detection:', error);
+              resolve([]);
+              return;
+            }
+            
+            const lines = stdout.trim().split('\n');
+            const devices = lines.map(line => {
+              // Extract just the device name after "Input Source:"
+              const match = line.match(/Input Source:\s*(.*?)(?:\s*$|\s*:)/);
+              return match ? match[1].trim() : null;
+            })
+            .filter(device => device && device !== 'Default');
+            
+            // Remove duplicates
+            const uniqueDevices = [...new Set(devices)];
+            resolve(uniqueDevices);
+          });
+        } else {
+          resolve(audioDevices);
+        }
+      } catch (parseError) {
+        console.error('Error parsing audio device data:', parseError);
+        reject(parseError);
+      }
     });
   });
 }

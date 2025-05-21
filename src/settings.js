@@ -48,11 +48,23 @@ async function loadAudioDevices() {
     
     // Add available devices
     devices.forEach(device => {
-      const option = document.createElement('option');
-      option.value = device;
-      option.textContent = device;
-      audioDeviceSelect.appendChild(option);
+      if (device) {
+        const option = document.createElement('option');
+        option.value = device;
+        option.textContent = device;
+        audioDeviceSelect.appendChild(option);
+      }
     });
+    
+    if (devices.length === 0) {
+      const noDevicesOption = document.createElement('option');
+      noDevicesOption.value = '';
+      noDevicesOption.textContent = 'No input devices found';
+      noDevicesOption.disabled = true;
+      audioDeviceSelect.appendChild(noDevicesOption);
+      
+      showStatus('No input devices found', 'warning');
+    }
   } catch (error) {
     showStatus('Error loading audio devices', 'error');
     console.error('Error loading audio devices:', error);
