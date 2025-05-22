@@ -53,3 +53,4 @@ temp_recording_*
 *.pem
 *.key
 *.cert
+README.txt
