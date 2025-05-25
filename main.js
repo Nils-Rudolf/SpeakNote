@@ -1,4 +1,4 @@
-const { app, BrowserWindow, globalShortcut, ipcMain, Menu, Tray, screen, dialog } = require('electron');
+const { app, BrowserWindow, globalShortcut, ipcMain, Menu, Tray, screen } = require('electron');
 const path = require('path');
 const { exec } = require('child_process');
 const Store = require('electron-store');
@@ -829,6 +829,13 @@ async function cancelRecordingProcess() {
 
 // Insert text at cursor position (macOS-specific)
 async function insertTextAtCursor(text) {
+  /* 
+  1. Writes the text to a temporary file
+  2. Creates an AppleScript that reads the text from the file
+  3. Puts the text on the clipboard
+  4. Activates the target application
+  5. Uses keystroke "v" using {command down} to paste the text 
+  */
   console.log('[DEBUG] insertTextAtCursor called');
   
   // Check if an active application was saved
@@ -1205,30 +1212,30 @@ app.whenReady().then(() => {
   if (!onboardingCompleted) {
     createOnboardingWindow();
   }
+  
 
   // Variable to monitor rapid repetitions of F5
   let lastF5Time = 0;
   let isProcessing = false;
-
-  // Refactored F5 Shortcut Handler
-  async function handleF5Shortcut() {
+  
+  // Register F5 as a global shortcut
+  const success = globalShortcut.register('f5', async () => {
     // Debouncing mechanism: Filter calls that are too fast (within 800ms)
     const now = Date.now();
     if (now - lastF5Time < 800) {
       console.log('F5 was pressed too quickly in succession, ignoring...');
       return;
     }
-
+    
     // Processing is already running - block
     if (isProcessing) {
       console.log('An F5 action is already in progress, ignoring...');
       return;
     }
-
+    
     lastF5Time = now;
     isProcessing = true;
-    console.log('[DEBUG] F5 key pressed, processing action...');
-
+    
     try {
       // Status check and corresponding action
       if (recording) {
@@ -1246,59 +1253,22 @@ app.whenReady().then(() => {
         isProcessing = false;
       }, 500);
     }
-  }
-  
-  // Register F5 as a global shortcut - this runs every time the app starts
-  const success = globalShortcut.register('f5', handleF5Shortcut);
+  });
   
   if (!success) {
     console.error('Global shortcut F5 could not be registered');
-    // Try alternative shortcut if F5 registration fails
-    const altSuccess = globalShortcut.register('CommandOrControl+5', async () => {
-      // Same debouncing mechanism as for F5
-      const now = Date.now();
-      if (now - lastF5Time < 800 || isProcessing) {
-        return;
-      }
-      
-      lastF5Time = now;
-      isProcessing = true;
-      console.log('[DEBUG] CommandOrControl+5 key pressed, processing action...');
-      
-      try {
-        if (recording) {
-          console.log('[DEBUG] CommandOrControl+5 pressed while recording, stopping recording...');
-          await stopRecording();
-        } else {
-          console.log('[DEBUG] CommandOrControl+5 pressed to start new recording, will capture active application...');
-          await startRecording();
-        }
-      } catch (error) {
-        console.error('Error during CommandOrControl+5 processing:', error);
-      } finally {
-        setTimeout(() => {
-          isProcessing = false;
-        }, 500);
-      }
-    });
     
-    if (altSuccess) {
-      console.log('Alternative shortcut CommandOrControl+5 registered');
-    } else {
-      console.error('Both F5 and CommandOrControl+5 shortcuts could not be registered');
-      
-      // Show a notification to the user about shortcut registration failure
-      const currentWindow = BrowserWindow.getFocusedWindow() || mainWindow;
-      dialog.showMessageBox(currentWindow, {
-        type: 'warning',
-        title: 'Shortcut Registration Issue',
-        message: 'SpeakNote could not register keyboard shortcuts (F5 or CommandOrControl+5).',
-        detail: 'This might be due to a conflict with another application. You may need to restart your computer or check system shortcut settings.',
-        buttons: ['OK']
-      }).catch(err => {
-        console.error('Error displaying shortcut failure dialog:', err);
-      });
-    }
+    // Show a notification to the user about shortcut registration failure
+    const currentWindow = BrowserWindow.getFocusedWindow() || mainWindow;
+    dialog.showMessageBox(currentWindow, {
+      type: 'warning',
+      title: 'Shortcut Registration Issue',
+      message: 'SpeakNote could not register the F5 keyboard shortcut.',
+      detail: 'This might be due to a conflict with another application. You may need to restart your computer or check system shortcut settings.',
+      buttons: ['OK']
+    }).catch(err => {
+      console.error('Error displaying shortcut failure dialog:', err);
+    });
   } else {
     console.log('Global shortcut F5 successfully registered');
   }

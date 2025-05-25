@@ -10,10 +10,31 @@ The app runs in the background, is accessible via the menu bar, and helps you qu
 ## Features
 
 - **Direct Insertion:** Transcribed text is automatically inserted at the cursor position of the initial active window. While recording, you can freely switch to other windows or applications.
-- **Global Hotkey:** F5 starts/stops recording (replacing the default macOS dictation function)
+- **Global Hotkey:** F5 starts/stops recording
 - **Floating Overlay:** Displays recording status with audio visualization
 - **API Integration:** Supports OpenAI Whisper for speech recognition
 - **Settings:** Configure API key and select audio input device
+
+## API Setup
+
+### OpenAI Whisper
+1. Sign up at [OpenAI](https://platform.openai.com/api-keys)
+2. Generate an API key
+3. Enter the API key in SpeakNote settings
+
+## Keyborad Setup
+1.	Open System Settings.
+2.	Go to Keyboard in the sidebar.
+3.	Scroll down and click on Keyboard Shortcuts.
+4.	In the window that opens, scroll to the bottom and click Function Keys.
+5.	Enable the toggle: “Use F1, F2, etc. keys as standard function keys”.
+
+## Usage
+1. Start the application from your Applications folder
+2. Allow access to the microphone and accessibility in the settings
+3. Configure API key and audio input device
+4. Press F5 to start recording
+5. Press F5 again to stop and transcribe the recording
 
 ## Installation
 
@@ -63,21 +84,6 @@ The app runs in the background, is accessible via the menu bar, and helps you qu
 
 5. The compiled app will be located in the `dist` folder.
 
-## Usage
-
-1. Start the application from your Applications folder
-2. Allow access to the microphone and accessibility in the settings
-3. Configure API key and audio input device
-4. Press F5 to start recording
-5. Press F5 again to stop and transcribe the recording
-
-## API Setup
-
-### OpenAI Whisper
-1. Sign up at [OpenAI](https://platform.openai.com/api-keys)
-2. Generate an API key
-3. Enter the API key in SpeakNote settings
-
 ## Notes
 
-- The F5 shortcut is globally overridden, so the default macOS dictation function on F5 will be unavailable
+- The F5 shortcut is globally overridden, so the default macOS dictation function will be on fn+F5.
